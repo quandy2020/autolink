@@ -31,6 +31,7 @@ Examples:
     # Force NVIDIA image on x86_64 (long form)
     python3 run.py --platform x86_64 --nvidia yes
 
+
     # Force standard image on x86_64
     python3 run.py -p x86_64 -n no
 
@@ -103,8 +104,7 @@ class AutonomyRunner:
         self.use_nvidia = "auto"
         self.docker_args = []
         self.remaining_args = []
-        self.autonomy_dev_dir = os.environ.get("AUTONOMY_ENV", os.getcwd())
-        self.aerozen_dev_dir = os.environ.get("AEROZEN_ENV", os.getcwd())
+        self.autolink_dev_dir = os.environ.get("AUTOLINK_ENV", os.getcwd())
         
     def setup_x11(self):
         """Configure X11 server permissions."""
@@ -153,7 +153,7 @@ class AutonomyRunner:
             return False
         
         print("\n" + "=" * 60)
-        print("  Autonomy Docker Container Platform Selection")
+        print("  Autolink Docker Container Platform Selection")
         print("=" * 60)
         print("  1. x86_64 (ROS2-Humble, Standard)")
         print("  2. x86_64 (ROS2-Humble, NVIDIA GPU, Isaac-Sim/Isaac-lab)")
@@ -278,7 +278,7 @@ class AutonomyRunner:
 
     def configure_environment(self):
         """Configure environment variables."""
-        self.docker_args.extend(["-e", "QT_X11_NO_MITSHM=1", "-e", "AUTONOMY_DEV_DIR=/workspace"])
+        self.docker_args.extend(["-e", "QT_X11_NO_MITSHM=1", "-e", "AUTOLINK_DEV_DIR=/workspace"])
         if self.platform_arch == "x86_64":
             self.docker_args.extend(["-e", "ACCEPT_EULA=Y"])
             print_info("NVIDIA Isaac Sim EULA accepted (force enabled on x86_64)")
@@ -363,9 +363,7 @@ class AutonomyRunner:
             "docker", "run", "-it" if sys.stdin.isatty() else "-i",
             "--name", "SpaceHero", "-p", "8765:8765",
             *self.docker_args,
-            # "-v", f"{self.autonomy_dev_dir}:/workspace/autonomy",
-            # "-v", f"{self.aerozen_dev_dir}:/workspace/aerozen",
-            "-v", "/Users/quandy/Workspace/project/aerozen:/workspace/aerozen",
+            "-v", f"{self.autolink_dev_dir}:/workspace/autolink",
             "-v", "/dev:/dev", "-v", "/etc/localtime:/etc/localtime:ro",
             "--workdir", "/workspace", 
             "--privileged",
