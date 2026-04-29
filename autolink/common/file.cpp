@@ -31,6 +31,7 @@
 
 #include "google/protobuf/util/json_util.h"
 #include "nlohmann/json.hpp"
+#include "autolink/conf/conf.hpp"
 
 namespace autolink {
 namespace common {
@@ -130,19 +131,29 @@ bool GetProtoFromBinaryFile(const std::string& file_name,
 
 bool GetProtoFromFile(const std::string& file_name,
                       google::protobuf::Message* message) {
-    if (!PathExists(file_name)) {
-        AERROR << "File [" << file_name << "] does not exist! ";
-        return false;
+    static const std::string kDefaultConfFile =
+        GetAbsolutePath(conf::kDefaultConfDir, "autolink.pb.conf");
+    std::string resolved_file_name = file_name;
+    if (!PathExists(resolved_file_name)) {
+        AWARN << "File [" << file_name << "] does not exist, fallback to ["
+              << kDefaultConfFile << "].";
+        resolved_file_name = kDefaultConfFile;
+        if (!PathExists(resolved_file_name)) {
+            AERROR << "Fallback file [" << resolved_file_name
+                   << "] does not exist.";
+            return false;
+        }
     }
     // Try the binary parser first if it's much likely a binary proto.
     static const std::string kBinExt = ".bin";
-    if (std::equal(kBinExt.rbegin(), kBinExt.rend(), file_name.rbegin())) {
-        return GetProtoFromBinaryFile(file_name, message) ||
-               GetProtoFromASCIIFile(file_name, message);
+    if (std::equal(kBinExt.rbegin(), kBinExt.rend(),
+                   resolved_file_name.rbegin())) {
+        return GetProtoFromBinaryFile(resolved_file_name, message) ||
+               GetProtoFromASCIIFile(resolved_file_name, message);
     }
 
-    return GetProtoFromASCIIFile(file_name, message) ||
-           GetProtoFromBinaryFile(file_name, message);
+    return GetProtoFromASCIIFile(resolved_file_name, message) ||
+           GetProtoFromBinaryFile(resolved_file_name, message);
 }
 
 bool GetProtoFromJsonFile(const std::string& file_name,

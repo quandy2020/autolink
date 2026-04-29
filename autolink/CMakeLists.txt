@@ -46,6 +46,14 @@ add_custom_command(
 
 add_custom_target(autolink_protos DEPENDS ${AUTOLINK_PROTO_SRCS} ${AUTOLINK_PROTO_HDRS})
 
+set(AUTOLINK_DEFAULT_CONF_DIR "${AUTOLINK_ROOT_DIR}/autolink/conf")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/autolink/conf")
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/conf/conf.hpp.in"
+  "${CMAKE_BINARY_DIR}/autolink/conf/conf.hpp"
+  @ONLY
+)
+
 # -----------------------------------------------------------------------------
 # core 库与 mainboard
 # -----------------------------------------------------------------------------
