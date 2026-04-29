@@ -29,7 +29,7 @@ set(_Autolink_ROOT_PATHS
 
 # 查找头文件
 find_path(Autolink_INCLUDE_DIR
-    NAMES autolink/common/init.hpp
+    NAMES autolink/init.hpp autolink/autolink.hpp
     PATHS ${_Autolink_ROOT_PATHS}
     PATH_SUFFIXES include
     NO_DEFAULT_PATH
@@ -38,7 +38,7 @@ find_path(Autolink_INCLUDE_DIR
 # 如果没找到，使用默认路径搜索
 if(NOT Autolink_INCLUDE_DIR)
     find_path(Autolink_INCLUDE_DIR
-        NAMES autolink/common/init.hpp
+        NAMES autolink/init.hpp autolink/autolink.hpp
         PATHS ${_Autolink_ROOT_PATHS}
         PATH_SUFFIXES include
     )
@@ -86,9 +86,45 @@ if(Autolink_INCLUDE_DIR)
     set(Autolink_INCLUDE_DIRS ${Autolink_INCLUDE_DIR})
 endif()
 
+# Detect interface include dependencies that are required by public headers.
+set(_Autolink_INTERFACE_INCLUDE_DIRS ${Autolink_INCLUDE_DIRS})
+find_path(Autolink_FASTDDS_INCLUDE_DIR
+    NAMES fastdds/dds/subscriber/DataReader.hpp
+    PATHS ${_Autolink_ROOT_PATHS}
+    PATH_SUFFIXES include
+    NO_DEFAULT_PATH
+)
+if(NOT Autolink_FASTDDS_INCLUDE_DIR)
+    find_path(Autolink_FASTDDS_INCLUDE_DIR
+        NAMES fastdds/dds/subscriber/DataReader.hpp
+        PATH_SUFFIXES include
+    )
+endif()
+if(Autolink_FASTDDS_INCLUDE_DIR)
+    list(APPEND _Autolink_INTERFACE_INCLUDE_DIRS "${Autolink_FASTDDS_INCLUDE_DIR}")
+endif()
+
 # 设置库文件
 if(Autolink_LIBRARY)
     set(Autolink_LIBRARIES ${Autolink_LIBRARY})
+endif()
+
+# Detect interface link dependencies that are referenced by inline headers.
+set(_Autolink_INTERFACE_LIBRARIES "")
+find_library(Autolink_GLOG_LIBRARY
+    NAMES glog
+    PATHS ${_Autolink_ROOT_PATHS}
+    PATH_SUFFIXES lib lib64
+    NO_DEFAULT_PATH
+)
+if(NOT Autolink_GLOG_LIBRARY)
+    find_library(Autolink_GLOG_LIBRARY
+        NAMES glog
+        PATH_SUFFIXES lib lib64
+    )
+endif()
+if(Autolink_GLOG_LIBRARY)
+    list(APPEND _Autolink_INTERFACE_LIBRARIES "${Autolink_GLOG_LIBRARY}")
 endif()
 
 # 查找版本信息（如果存在）
@@ -121,8 +157,13 @@ if(Autolink_FOUND AND NOT TARGET Autolink::Autolink)
     
     set_target_properties(Autolink::Autolink PROPERTIES
         IMPORTED_LOCATION "${Autolink_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${Autolink_INCLUDE_DIRS}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_Autolink_INTERFACE_INCLUDE_DIRS}"
     )
+    if(_Autolink_INTERFACE_LIBRARIES)
+        set_property(TARGET Autolink::Autolink APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES "${_Autolink_INTERFACE_LIBRARIES}"
+        )
+    endif()
     
     # 设置依赖库（如果需要）
     # 例如：protobuf, glog 等

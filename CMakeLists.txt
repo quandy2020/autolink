@@ -99,6 +99,7 @@ endif()
 # install: sudo make install 或 cmake --build build --target install
 # -----------------------------------------------------------------------------
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 # 库与可执行文件（autolink_proto 已静态链接进 autolink，仅安装 libautolink.so）
 install(TARGETS autolink
@@ -126,4 +127,29 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/autolink/proto/
 install(DIRECTORY autolink/conf/
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/autolink/conf
   FILES_MATCHING PATTERN "*.conf"
+)
+
+# CMake package config for external consumers:
+#   find_package(Autolink REQUIRED)
+set(AUTOLINK_CMAKE_PACKAGE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/Autolink")
+set(AUTOLINK_CMAKE_PACKAGE_VERSION "0.1.0")
+
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AutolinkConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfig.cmake"
+  INSTALL_DESTINATION "${AUTOLINK_CMAKE_PACKAGE_DIR}"
+)
+
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfigVersion.cmake"
+  VERSION "${AUTOLINK_CMAKE_PACKAGE_VERSION}"
+  COMPATIBILITY SameMajorVersion
+)
+
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfigVersion.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindAutolink.cmake"
+  DESTINATION "${AUTOLINK_CMAKE_PACKAGE_DIR}"
 )

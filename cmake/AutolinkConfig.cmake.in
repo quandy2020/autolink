@@ -1,3 +1,9 @@
+@PACKAGE_INIT@
+
+# Reuse the project's find module logic for now, so consumers can use:
+#   find_package(Autolink REQUIRED)
+# and get Autolink::Autolink.
+include("${CMAKE_CURRENT_LIST_DIR}/FindAutolink.cmake")
 # Autolink CMake 配置文件
 # 此文件由 autolink 安装脚本生成
 # 使用方式：find_package(Autolink REQUIRED)
