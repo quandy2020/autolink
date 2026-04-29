@@ -25,9 +25,6 @@
 #include "autolink/mainboard/module_argument.hpp"
 #include "autolink/mainboard/module_controller.hpp"
 #include "autolink/state.hpp"
-#include "gperftools/heap-profiler.h"
-#include "gperftools/malloc_extension.h"
-#include "gperftools/profiler.h"
 
 using autolink::mainboard::ModuleArgument;
 using autolink::mainboard::ModuleController;
@@ -64,25 +61,6 @@ int main(int argc, char** argv) {
     // initialize autolink
     autolink::Init(argv[0], dag_info);
 
-    static bool enable_cpu_profile = module_args.GetEnableCpuprofile();
-    static bool enable_mem_profile = module_args.GetEnableHeapprofile();
-    std::signal(SIGTERM, [](int sig) {
-        autolink::OnShutdown(sig);
-        if (enable_cpu_profile) {
-            ProfilerStop();
-        }
-
-        if (enable_mem_profile) {
-            HeapProfilerDump("Befor shutdown");
-            HeapProfilerStop();
-        }
-    });
-
-    if (module_args.GetEnableHeapprofile()) {
-        auto profile_filename = module_args.GetHeapProfileFilename();
-        HeapProfilerStart(profile_filename.c_str());
-    }
-
     // start module
     ModuleController controller(module_args);
     if (!controller.Init()) {
@@ -91,22 +69,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    if (module_args.GetEnableCpuprofile()) {
-        auto profile_filename = module_args.GetProfileFilename();
-        ProfilerStart(profile_filename.c_str());
-    }
-
     autolink::WaitForShutdown();
-
-    if (module_args.GetEnableCpuprofile()) {
-        ProfilerStop();
-    }
-
-    if (module_args.GetEnableHeapprofile()) {
-        HeapProfilerDump("Befor shutdown");
-        HeapProfilerStop();
-    }
-
     controller.Clear();
     AINFO << "exit mainboard.";
 
