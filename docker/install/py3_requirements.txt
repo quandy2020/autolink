@@ -1,0 +1,22 @@
+
+## Ref:
+## 1) https://www.python.org/dev/peps/pep-0508/#environment-markers
+
+# 安装Sphinx
+mathjax
+myst-parser
+recommonmark
+breathe
+myst_parser
+sphinx
+sphinx_markdown_tables
+sphinx-rtd-theme    
+sphinxcontrib-applehelp 
+sphinxcontrib-devhelp 
+sphinxcontrib-htmlhelp 
+sphinxcontrib-jsmath 
+sphinxcontrib-qthelp
+sphinxcontrib-serializinghtml
+sphinx-copybutton 
+
+
