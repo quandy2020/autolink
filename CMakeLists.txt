@@ -33,7 +33,6 @@ option(AUTOLINK_BUILD_PYTHON "Build Python bindings" ON)
 option(AUTOLINK_BUILD_DOCS "Build documentation" ON)
 option(AUTOLINK_FORCE_TCMALLOC_WITH_PYTHON
   "Force linking tcmalloc into autolink even when Python bindings are enabled" OFF)
-option(AUTOLINK_BUILD_PERFORMANCE "Build performance tools" OFF)
 
 # output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -62,10 +61,6 @@ find_package(Glog REQUIRED)
 find_package(TinyXML2 QUIET)
 find_library(GFLAGS_LIB NAMES gflags)
 find_library(UUID_LIB NAMES uuid)
-
-if(AUTOLINK_BUILD_PERFORMANCE)
-  find_package(Gperftools REQUIRED)
-endif()
 
 # libfastrtps depends on libfastcdr.so.N; some loaders resolve that using only a
 # narrow RPATH. Embed the real directories of the FastDDS/FastCDR libs used at

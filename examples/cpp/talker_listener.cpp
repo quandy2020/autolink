@@ -24,7 +24,7 @@ using autolink::Time;
 using autolink::examples::Chatter;
 
 void MessageCallback(const std::shared_ptr<Chatter>& msg) {
-    AINFO << "Received message seq-> " << msg->seq() << " content-> "
+    AINFO << "RX seq [#" << msg->seq() << "] content: "
           << msg->content();
 }
 
@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
         msg->set_seq(seq);
         msg->set_content("Hello, autolink!");
         writer->Write(msg);
-        AINFO << "sent seq " << seq;
+        AINFO << "TX seq [#" << seq << "] content: " << msg->content();
         seq++;
         rate.Sleep();
     }
