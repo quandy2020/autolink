@@ -8,7 +8,7 @@
 - [🌟 核心能力](#-核心能力)
 - [🛠️ 安装方式](#️-安装方式)
 - [📘 CMake 集成示例（examples/cpp-cmake）](#-cmake-集成示例examplescpp-cmake)
-- [🆚 与 ROS2 对比（简版）](#-与-ros2-对比简版)
+- [🆚 与 ROS2 对比](#-与-ros2-对比)
 
 ## ✅ 为什么选择 Autolink
 
@@ -151,7 +151,7 @@ cmake -S examples/cpp-cmake -B build/cpp-cmake \
   -DCMAKE_PREFIX_PATH=/path/to/autolink/install
 ```
 
-## 🆚 与 ROS2 对比（简版）
+## 🆚 与 ROS2 对比
 
 | 维度 | Autolink | ROS2 |
 |---|---|---|
