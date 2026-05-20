@@ -74,6 +74,11 @@ std::shared_ptr<Base> ClassLoaderManager::CreateClassObj(
             return (class_loader->CreateClassObj<Base>(class_name));
         }
     }
+    // In-process registration (linked into main binary, no .so ClassLoader).
+    if (Base* unmanaged =
+            utility::CreateUnmanagedClassObj<Base>(class_name)) {
+        return std::shared_ptr<Base>(unmanaged);
+    }
     AERROR << "Invalid class name: " << class_name;
     return std::shared_ptr<Base>();
 }
@@ -93,8 +98,11 @@ std::shared_ptr<Base> ClassLoaderManager::CreateClassObj(
 template <typename Base>
 bool ClassLoaderManager::IsClassValid(const std::string& class_name) {
     std::vector<std::string> valid_classes = GetValidClassNames<Base>();
-    return (valid_classes.end() !=
-            std::find(valid_classes.begin(), valid_classes.end(), class_name));
+    if (valid_classes.end() !=
+        std::find(valid_classes.begin(), valid_classes.end(), class_name)) {
+        return true;
+    }
+    return utility::IsUnmanagedClassRegistered<Base>(class_name);
 }
 
 template <typename Base>
@@ -105,6 +113,18 @@ std::vector<std::string> ClassLoaderManager::GetValidClassNames() {
             class_loader->GetValidClassNames<Base>();
         valid_classes.insert(valid_classes.end(), class_loaders.begin(),
                              class_loaders.end());
+    }
+    std::lock_guard<std::recursive_mutex> lck(
+        utility::GetClassFactoryMapMapMutex());
+    const utility::ClassClassFactoryMap& factory_map =
+        utility::GetClassFactoryMapByBaseClass(typeid(Base).name());
+    for (const auto& entry : factory_map) {
+        const auto* factory =
+            dynamic_cast<const utility::AbstractClassFactory<Base>*>(
+                entry.second);
+        if (factory != nullptr && !factory->IsOwnedByAnybody()) {
+            valid_classes.push_back(entry.first);
+        }
     }
     return valid_classes;
 }

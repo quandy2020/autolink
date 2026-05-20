@@ -35,6 +35,9 @@ void AbstractClassFactoryBase::SetRelativeLibraryPath(
 }
 
 void AbstractClassFactoryBase::AddOwnedClassLoader(ClassLoader* loader) {
+    if (loader == nullptr) {
+        return;
+    }
     if (std::find(relative_class_loaders_.begin(),
                   relative_class_loaders_.end(),
                   loader) == relative_class_loaders_.end()) {
@@ -57,8 +60,13 @@ bool AbstractClassFactoryBase::IsOwnedBy(const ClassLoader* loader) {
     return itr != relative_class_loaders_.end();
 }
 
-bool AbstractClassFactoryBase::IsOwnedByAnybody() {
-    return !relative_class_loaders_.empty();
+bool AbstractClassFactoryBase::IsOwnedByAnybody() const {
+    for (const ClassLoader* loader : relative_class_loaders_) {
+        if (loader != nullptr) {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::vector<ClassLoader*> AbstractClassFactoryBase::GetRelativeClassLoaders() {

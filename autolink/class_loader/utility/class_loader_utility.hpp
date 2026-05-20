@@ -70,6 +70,21 @@ Base* CreateClassObj(const std::string& class_name, ClassLoader* loader);
 template <typename Base>
 std::vector<std::string> GetValidClassNames(ClassLoader* loader);
 
+/**
+ * @brief Create an object registered at static init without a ClassLoader (.so).
+ *
+ * Used for classes linked into the main binary (AUTOLINK_PLUGIN_MANAGER_REGISTER_PLUGIN
+ * in libautonomy). Returns nullptr if the class is unknown or owned by a loader.
+ */
+template <typename Base>
+Base* CreateUnmanagedClassObj(const std::string& class_name);
+
+/**
+ * @brief Whether @p class_name is registered in-process without a ClassLoader.
+ */
+template <typename Base>
+bool IsUnmanagedClassRegistered(const std::string& class_name);
+
 template <typename Derived, typename Base>
 void RegisterClass(const std::string& class_name,
                    const std::string& base_class_name) {
@@ -123,6 +138,37 @@ std::vector<std::string> GetValidClassNames(ClassLoader* loader) {
     }
 
     return classes;
+}
+
+template <typename Base>
+Base* CreateUnmanagedClassObj(const std::string& class_name) {
+    std::lock_guard<std::recursive_mutex> lck(GetClassFactoryMapMapMutex());
+    ClassClassFactoryMap& factory_map =
+        GetClassFactoryMapByBaseClass(typeid(Base).name());
+    const auto it = factory_map.find(class_name);
+    if (it == factory_map.end()) {
+        return nullptr;
+    }
+    auto* factory =
+        dynamic_cast<AbstractClassFactory<Base>*>(it->second);
+    if (factory == nullptr || factory->IsOwnedByAnybody()) {
+        return nullptr;
+    }
+    return factory->CreateObj();
+}
+
+template <typename Base>
+bool IsUnmanagedClassRegistered(const std::string& class_name) {
+    std::lock_guard<std::recursive_mutex> lck(GetClassFactoryMapMapMutex());
+    ClassClassFactoryMap& factory_map =
+        GetClassFactoryMapByBaseClass(typeid(Base).name());
+    const auto it = factory_map.find(class_name);
+    if (it == factory_map.end()) {
+        return false;
+    }
+    const auto* factory =
+        dynamic_cast<const AbstractClassFactory<Base>*>(it->second);
+    return factory != nullptr && !factory->IsOwnedByAnybody();
 }
 
 }  // namespace utility

@@ -38,7 +38,7 @@ public:
     void AddOwnedClassLoader(ClassLoader* loader);
     void RemoveOwnedClassLoader(const ClassLoader* loader);
     bool IsOwnedBy(const ClassLoader* loader);
-    bool IsOwnedByAnybody();
+    bool IsOwnedByAnybody() const;
     std::vector<ClassLoader*> GetRelativeClassLoaders();
     const std::string GetRelativeLibraryPath() const;
     const std::string GetBaseClassName() const;
