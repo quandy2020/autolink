@@ -18,18 +18,11 @@
 
 #include <atomic>
 #include <functional>
-#include <mutex>
 #include <string>
 
 #include "autolink/base/signal.hpp"
 #include "autolink/proto/topology_change.pb.h"
-#include "autolink/service_discovery/communication/subscriber_listener.hpp"
-#include "fastrtps/Domain.h"
-#include "fastrtps/attributes/PublisherAttributes.h"
-#include "fastrtps/attributes/SubscriberAttributes.h"
-#include "fastrtps/participant/Participant.h"
-#include "fastrtps/publisher/Publisher.h"
-#include "fastrtps/subscriber/Subscriber.h"
+#include "autolink/service_discovery/topology_backend.hpp"
 
 namespace autolink {
 namespace service_discovery {
@@ -52,9 +45,7 @@ public:
     using ChangeFunc = std::function<void(const ChangeMsg&)>;
     using ChangeConnection = base::Connection<const ChangeMsg&>;
 
-    using RtpsParticipant = eprosima::fastrtps::Participant;
-    using RtpsPublisherAttr = eprosima::fastrtps::PublisherAttributes;
-    using RtpsSubscriberAttr = eprosima::fastrtps::SubscriberAttributes;
+    using RtpsParticipant = void;
 
     /**
      * @brief Construct a new Manager object
@@ -65,6 +56,8 @@ public:
      * @brief Destroy the Manager object
      */
     virtual ~Manager();
+
+    static void SetTopologyBackend(ITopologyBackend* backend);
 
     /**
      * @brief Startup topology discovery
@@ -134,9 +127,6 @@ public:
                                    int process_id) = 0;
 
 protected:
-    bool CreatePublisher(RtpsParticipant* participant);
-    bool CreateSubscriber(RtpsParticipant* participant);
-
     virtual bool Check(const RoleAttributes& attr) = 0;
     virtual void Dispose(const ChangeMsg& msg) = 0;
     virtual bool NeedPublish(const ChangeMsg& msg) const;
@@ -146,6 +136,7 @@ protected:
 
     void Notify(const ChangeMsg& msg);
     bool Publish(const ChangeMsg& msg);
+    void HandleRemoteChange(const ChangeMsg& msg);
     void OnRemoteChange(const std::string& msg_str);
     bool IsFromSameProcess(const ChangeMsg& msg);
 
@@ -156,12 +147,13 @@ protected:
     std::string host_name_;
     int process_id_;
     std::string channel_name_;
-    eprosima::fastrtps::Publisher* publisher_;
-    std::mutex lock_;
-    eprosima::fastrtps::Subscriber* subscriber_;
-    SubscriberListener* listener_;
+
+    int64_t backend_subscription_id_ = -1;
 
     ChangeSignal signal_;
+
+    static std::mutex backend_mutex_;
+    static ITopologyBackend* topology_backend_;
 };
 
 }  // namespace service_discovery

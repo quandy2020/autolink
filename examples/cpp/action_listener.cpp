@@ -8,9 +8,11 @@
 #include <chrono>
 #include <memory>
 #include <thread>
+#include <unistd.h>
 
 #include "autolink/action/simple_action_server.hpp"
 #include "autolink/autolink.hpp"
+#include "autolink/time/time.hpp"
 #include "examples.pb.h"
 
 namespace {
@@ -32,8 +34,8 @@ using ResultPtr = std::shared_ptr<SimpleMessageActionTraits::Result>;
 constexpr char kActionName[] = "examples/simple_message_action";
 constexpr int kFeedbackSteps = 30;
 constexpr auto kFeedbackPeriod = std::chrono::milliseconds(1000);
-constexpr char kNodeName[] = "simple_action_server";
-
+constexpr auto kFeedbackReaderWait = std::chrono::seconds(2);
+constexpr auto kFeedbackReaderPoll = std::chrono::milliseconds(50);
 void RunAcceptedGoal(const std::shared_ptr<ActionServer>& server) {
     if (!server) {
         return;
@@ -47,6 +49,13 @@ void RunAcceptedGoal(const std::shared_ptr<ActionServer>& server) {
         }
 
         AINFO << "Executing goal, text=\"" << goal->text() << "\"";
+
+        const auto wait_deadline =
+            std::chrono::steady_clock::now() + kFeedbackReaderWait;
+        while (autolink::OK() && !server->HasFeedbackSubscriber() &&
+               std::chrono::steady_clock::now() < wait_deadline) {
+            std::this_thread::sleep_for(kFeedbackReaderPoll);
+        }
 
         bool preempted = false;
         for (int i = 0; i < kFeedbackSteps; ++i) {
@@ -93,7 +102,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    auto node = autolink::CreateNode(kNodeName);
+    const std::string node_name =
+        "simple_action_server_" + std::to_string(getpid()) + "_" +
+        std::to_string(autolink::Time::Now().ToNanosecond());
+    auto node = autolink::CreateNode(node_name);
+    AINFO << "Action server node: " << node_name;
 
     std::shared_ptr<ActionServer> server;
     server = std::make_shared<ActionServer>(

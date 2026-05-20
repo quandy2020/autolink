@@ -39,6 +39,8 @@
 
 ## 🛠️ 安装方式
 
+<span style="color:#2E7D32"><strong>默认模式</strong></span>：当前工程使用进程内 + 进程间（SHM）通信和本地拓扑发现后端，不再依赖 FastDDS。
+
 ### **方式一：通过 Docker 安装（推荐）** 🐳
 
 Docker 相关脚本位于 **`docker/`** 目录 📁。

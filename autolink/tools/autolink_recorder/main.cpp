@@ -33,12 +33,6 @@
 #include "autolink/tools/autolink_recorder/recorder.hpp"
 #include "autolink/tools/autolink_recorder/recoverer.hpp"
 #include "autolink/tools/autolink_recorder/spliter.hpp"
-#include "gflags/gflags.h"
-#ifdef HAVE_GPERFTOOLS
-#include "gperftools/heap-profiler.h"
-#include "gperftools/malloc_extension.h"
-#include "gperftools/profiler.h"
-#endif
 
 using autolink::common::GetFileName;
 using autolink::common::StringToUnixSeconds;
@@ -240,9 +234,13 @@ int main(int argc, char** argv) {
         switch (opt) {
             case 'C':
                 enable_cpu_profile = true;
+                std::cout << "cpu profiling is disabled (not built in this tree)."
+                          << std::endl;
                 break;
             case 'H':
                 enable_heap_profile = true;
+                std::cout << "heap profiling is disabled (not built in this tree)."
+                          << std::endl;
                 break;
             case 'f':
                 if (!autolink::common::PathIsAbsolute(std::string(optarg))) {
@@ -506,39 +504,14 @@ int main(int argc, char** argv) {
             opt_header);
         std::signal(SIGTERM, [](int sig) {
             autolink::OnShutdown(sig);
-#ifdef HAVE_GPERFTOOLS
-            if (enable_cpu_profile) {
-                ProfilerStop();
-            }
-            if (enable_heap_profile) {
-                HeapProfilerDump("Befor shutdown");
-                HeapProfilerStop();
-            }
-#endif
         });
 
         std::signal(SIGINT, [](int sig) {
             autolink::OnShutdown(sig);
-#ifdef HAVE_GPERFTOOLS
-            if (enable_cpu_profile) {
-                ProfilerStop();
-            }
-            if (enable_heap_profile) {
-                HeapProfilerDump("Befor shutdown");
-                HeapProfilerStop();
-            }
-#endif
         });
 
-        auto base_name = std::string(argv[0]) + std::string(".prof");
-#ifdef HAVE_GPERFTOOLS
-        if (enable_cpu_profile) {
-            ProfilerStart(base_name.c_str());
-        }
-        if (enable_heap_profile) {
-            HeapProfilerStart(base_name.c_str());
-        }
-#endif
+        (void)enable_cpu_profile;
+        (void)enable_heap_profile;
         bool record_result = recorder->Start();
         if (record_result) {
             while (!::autolink::IsShutdown()) {

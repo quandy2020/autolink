@@ -6,12 +6,15 @@
  *****************************************************************************/
 
 #include <chrono>
+#include <atomic>
 #include <memory>
 #include <thread>
+#include <unistd.h>
 
 #include "autolink/action/action.hpp"
 #include "autolink/action/types.hpp"
 #include "autolink/autolink.hpp"
+#include "autolink/time/time.hpp"
 #include "examples.pb.h"
 
 namespace {
@@ -32,6 +35,7 @@ constexpr char kActionName[] = "examples/simple_message_action";
 constexpr auto kWaitServerReady = std::chrono::milliseconds(100);
 constexpr auto kAcceptTimeout = std::chrono::seconds(30);
 constexpr auto kResultTimeout = std::chrono::seconds(60);
+std::atomic<int> g_last_feedback_index{-1};
 
 void LogActionOutcome(const std::shared_ptr<GoalHandle>& handle,
                       const GoalHandle::WrappedResult& wr) {
@@ -53,7 +57,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    auto node = autolink::CreateNode("simple_action_client");
+    const std::string node_name =
+        "simple_action_client_" + std::to_string(getpid()) + "_" +
+        std::to_string(autolink::Time::Now().ToNanosecond());
+    auto node = autolink::CreateNode(node_name);
+    AINFO << "Action client node: " << node_name;
     auto client = autolink::action::CreateClient<SimpleMessageActionTraits>(
         node, kActionName);
 
@@ -79,7 +87,11 @@ int main(int argc, char* argv[]) {
            std::shared_ptr<const SimpleMessageActionTraits::Feedback> fb) {
             (void)gh;
             if (fb) {
-                AINFO << "Feedback index=" << fb->index();
+                const int idx = fb->index();
+                if (g_last_feedback_index.exchange(idx) == idx) {
+                    return;
+                }
+                AINFO << "Feedback index=" << idx;
             }
         };
     // Result is delivered once via AsyncGetResult().wait(); avoid duplicate

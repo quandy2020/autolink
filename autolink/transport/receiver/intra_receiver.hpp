@@ -78,6 +78,12 @@ void IntraReceiver<M>::Disable() {
 
 template <typename M>
 void IntraReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
+    // IntraReceiver::Enable() already has a channel-level listener.
+    // Avoid adding per-opposite listener again, otherwise one message may
+    // trigger duplicated callbacks.
+    if (this->enabled_) {
+        return;
+    }
     dispatcher_->AddListener<M>(
         this->attr_, opposite_attr,
         std::bind(&IntraReceiver<M>::OnNewMessage, this, std::placeholders::_1,
@@ -86,6 +92,9 @@ void IntraReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
 
 template <typename M>
 void IntraReceiver<M>::Disable(const RoleAttributes& opposite_attr) {
+    if (this->enabled_) {
+        return;
+    }
     dispatcher_->RemoveListener<M>(this->attr_, opposite_attr);
 }
 

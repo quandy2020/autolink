@@ -64,6 +64,7 @@ autolink_example_with_proto(autolink_example_record record.cpp)
 autolink_example_with_proto(autolink_example_action_listener action_listener.cpp)
 autolink_example_with_proto(autolink_example_action_talker action_talker.cpp)
 autolink_example_with_proto(autolink_example_action_talker2 action_talker2.cpp)
+autolink_example(autolink_example_pod_talker_listener pod_talker_listener.cpp)
 
 # component
 add_subdirectory(timer_component_example)

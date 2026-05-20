@@ -19,10 +19,6 @@
 #include <getopt.h>
 #include <libgen.h>
 
-#if __has_include("gperftools/profiler.h")
-#include "gperftools/profiler.h"
-#endif
-
 using autolink::common::GlobalData;
 
 namespace autolink {
@@ -43,11 +39,11 @@ void ModuleArgument::DisplayUsage() {
            "plugin\n"
         << "    --disable_plugin_autoload : default enable autoload "
            "mode of plugins, use disable_plugin_autoload to ingore autoload\n"
-        << "    -c, --cpuprofile: enable gperftools cpu profile\n"
+        << "    -c, --cpuprofile: cpu profiling option (disabled)\n"
         << "    -o, --profile_filename=filename: the filename to dump the "
            "profile to, default value is ${process_group}_cpu.prof. Only work "
            "with -c option\n"
-        << "    -H, --heapprofile: enable gperftools heap profile\n"
+        << "    -H, --heapprofile: heap profiling option (disabled)\n"
         << "    -O, --heapprofile_filename=filename: the filename to dump the "
            "profile to, default value is ${process_group}_mem.prof. Only work "
            "with -c option\n"
@@ -148,18 +144,14 @@ void ModuleArgument::GetOptions(const int argc, char* const argv[]) {
                 disable_plugin_autoload_ = true;
                 break;
             case 'c':
-#ifndef BASE_PROFILER_H_
-                AWARN << "gperftools not installed, ignore perf parameters";
-#endif
+                AWARN << "profiling dependency removed, ignore cpu profile parameters";
                 enable_cpuprofile_ = true;
                 break;
             case 'o':
                 profile_filename_ = std::string(optarg);
                 break;
             case 'H':
-#ifndef BASE_PROFILER_H_
-                AWARN << "gperftools not installed, ignore perf parameters";
-#endif
+                AWARN << "profiling dependency removed, ignore heap profile parameters";
                 enable_heapprofile_ = true;
                 break;
             case 'O':

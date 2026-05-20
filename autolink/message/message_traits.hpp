@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <string>
 #include <typeinfo>
 
@@ -130,7 +131,22 @@ typename std::enable_if<HasByteSize<T>::value, int>::type ByteSize(
 }
 
 template <typename T>
-typename std::enable_if<!HasByteSize<T>::value, int>::type ByteSize(
+typename std::enable_if<!HasByteSize<T>::value &&
+                            HasSerializeToString<T>::value,
+                        int>::type
+ByteSize(const T& message) {
+    std::string tmp;
+    if (!message.SerializeToString(&tmp)) {
+        return -1;
+    }
+    return static_cast<int>(tmp.size());
+}
+
+template <typename T>
+typename std::enable_if<!HasByteSize<T>::value &&
+                            !HasSerializeToString<T>::value,
+                        int>::type
+ByteSize(
     const T& message) {
     (void)message;
     return -1;
@@ -172,8 +188,25 @@ typename std::enable_if<HasParseFromArray<T>::value, bool>::type ParseFromArray(
 }
 
 template <typename T>
-typename std::enable_if<!HasParseFromArray<T>::value, bool>::type
+typename std::enable_if<!HasParseFromArray<T>::value &&
+                            HasParseFromString<T>::value,
+                        bool>::type
 ParseFromArray(const void* data, int size, T* message) {
+    if (data == nullptr || size < 0) {
+        return false;
+    }
+    const auto* bytes = reinterpret_cast<const char*>(data);
+    return message->ParseFromString(std::string(bytes, size));
+}
+
+template <typename T>
+typename std::enable_if<!HasParseFromArray<T>::value &&
+                            !HasParseFromString<T>::value,
+                        bool>::type
+ParseFromArray(const void* data, int size, T* message) {
+    (void)data;
+    (void)size;
+    (void)message;
     return false;
 }
 
@@ -236,8 +269,32 @@ SerializeToArray(const T& message, void* data, int size) {
 }
 
 template <typename T>
-typename std::enable_if<!HasSerializeToArray<T>::value, bool>::type
+typename std::enable_if<!HasSerializeToArray<T>::value &&
+                            HasSerializeToString<T>::value,
+                        bool>::type
 SerializeToArray(const T& message, void* data, int size) {
+    if (data == nullptr || size < 0) {
+        return false;
+    }
+    std::string tmp;
+    if (!message.SerializeToString(&tmp)) {
+        return false;
+    }
+    if (size < static_cast<int>(tmp.size())) {
+        return false;
+    }
+    std::memcpy(data, tmp.data(), tmp.size());
+    return true;
+}
+
+template <typename T>
+typename std::enable_if<!HasSerializeToArray<T>::value &&
+                            !HasSerializeToString<T>::value,
+                        bool>::type
+SerializeToArray(const T& message, void* data, int size) {
+    (void)message;
+    (void)data;
+    (void)size;
     return false;
 }
 

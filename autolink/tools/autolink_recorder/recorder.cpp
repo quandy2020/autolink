@@ -17,11 +17,29 @@
 #include "autolink/tools/autolink_recorder/recorder.hpp"
 
 #include <algorithm>
+#include <cstdlib>
+#include <iomanip>
 
 #include "autolink/record/header_builder.hpp"
 
 namespace autolink {
 namespace record {
+
+namespace {
+int32_t PendingQueueSizeFromEnv() {
+    constexpr int32_t kDefaultPendingQueueSize = 50;
+    const char* value = std::getenv("AUTOLINK_PENDING_QUEUE_SIZE");
+    if (value == nullptr) {
+        return kDefaultPendingQueueSize;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed <= 0) {
+        return kDefaultPendingQueueSize;
+    }
+    return static_cast<int32_t>(parsed);
+}
+}  // namespace
 
 Recorder::Recorder(const std::string& output, bool all_channels,
                    const std::vector<std::string>& white_channels,
@@ -247,8 +265,7 @@ bool Recorder::InitReaderImpl(const std::string& channel_name,
         };
         ReaderConfig config;
         config.channel_name = channel_name;
-        config.pending_queue_size =
-            gflags::Int32FromEnv("AUTOLINK_PENDING_QUEUE_SIZE", 50);
+        config.pending_queue_size = PendingQueueSizeFromEnv();
         reader = node_->CreateReader<RawMessage>(config, callback);
         if (reader == nullptr) {
             AERROR << "Create reader failed.";

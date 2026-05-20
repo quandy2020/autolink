@@ -20,26 +20,19 @@
 #include "autolink/common/log.hpp"
 #include "autolink/message/message_traits.hpp"
 #include "autolink/time/time.hpp"
-#include "autolink/transport/qos/qos_profile_conf.hpp"
-#include "autolink/transport/rtps/attributes_filler.hpp"
-#include "autolink/transport/rtps/underlay_message.hpp"
-#include "autolink/transport/rtps/underlay_message_type.hpp"
 
 namespace autolink {
 namespace service_discovery {
 
-using transport::AttributesFiller;
-using transport::QosProfileConf;
+std::mutex Manager::backend_mutex_;
+ITopologyBackend* Manager::topology_backend_ = nullptr;
 
 Manager::Manager()
     : is_shutdown_(false),
       is_discovery_started_(false),
       allowed_role_(0),
       change_type_(proto::ChangeType::CHANGE_PARTICIPANT),
-      channel_name_(""),
-      publisher_(nullptr),
-      subscriber_(nullptr),
-      listener_(nullptr) {
+      channel_name_("") {
     host_name_ = common::GlobalData::Instance()->HostName();
     process_id_ = common::GlobalData::Instance()->ProcessId();
 }
@@ -48,16 +41,28 @@ Manager::~Manager() {
     Shutdown();
 }
 
+void Manager::SetTopologyBackend(ITopologyBackend* backend) {
+    std::lock_guard<std::mutex> lock(backend_mutex_);
+    topology_backend_ = backend;
+}
+
 bool Manager::StartDiscovery(RtpsParticipant* participant) {
-    if (participant == nullptr) {
+    (void)participant;
+    is_discovery_started_.store(true);
+    ITopologyBackend* backend = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(backend_mutex_);
+        backend = topology_backend_;
+    }
+    if (backend == nullptr) {
+        AERROR << "topology backend is not set.";
         return false;
     }
-    if (is_discovery_started_.exchange(true)) {
-        return true;
-    }
-    if (!CreatePublisher(participant) || !CreateSubscriber(participant)) {
-        AERROR << "create publisher or subscriber failed.";
-        StopDiscovery();
+    backend_subscription_id_ = backend->Subscribe(
+        change_type_,
+        [this](const ChangeMsg& msg) { HandleRemoteChange(msg); });
+    if (backend_subscription_id_ < 0) {
+        AERROR << "failed to subscribe topology backend.";
         return false;
     }
     return true;
@@ -68,23 +73,15 @@ void Manager::StopDiscovery() {
         return;
     }
 
+    ITopologyBackend* backend = nullptr;
     {
-        std::lock_guard<std::mutex> lg(lock_);
-        if (publisher_ != nullptr) {
-            eprosima::fastrtps::Domain::removePublisher(publisher_);
-            publisher_ = nullptr;
-        }
+        std::lock_guard<std::mutex> lock(backend_mutex_);
+        backend = topology_backend_;
     }
-
-    if (subscriber_ != nullptr) {
-        eprosima::fastrtps::Domain::removeSubscriber(subscriber_);
-        subscriber_ = nullptr;
+    if (backend != nullptr && backend_subscription_id_ >= 0) {
+        backend->Unsubscribe(backend_subscription_id_);
     }
-
-    if (listener_ != nullptr) {
-        delete listener_;
-        listener_ = nullptr;
-    }
+    backend_subscription_id_ = -1;
 }
 
 void Manager::Shutdown() {
@@ -138,31 +135,6 @@ void Manager::RemoveChangeListener(const ChangeConnection& conn) {
     local_conn.Disconnect();
 }
 
-bool Manager::CreatePublisher(RtpsParticipant* participant) {
-    RtpsPublisherAttr pub_attr;
-    RETURN_VAL_IF(
-        !AttributesFiller::FillInPubAttr(
-            channel_name_, QosProfileConf::QOS_PROFILE_TOPO_CHANGE, &pub_attr),
-        false);
-    publisher_ =
-        eprosima::fastrtps::Domain::createPublisher(participant, pub_attr);
-    return publisher_ != nullptr;
-}
-
-bool Manager::CreateSubscriber(RtpsParticipant* participant) {
-    RtpsSubscriberAttr sub_attr;
-    RETURN_VAL_IF(
-        !AttributesFiller::FillInSubAttr(
-            channel_name_, QosProfileConf::QOS_PROFILE_TOPO_CHANGE, &sub_attr),
-        false);
-    listener_ = new SubscriberListener(
-        std::bind(&Manager::OnRemoteChange, this, std::placeholders::_1));
-
-    subscriber_ = eprosima::fastrtps::Domain::createSubscriber(
-        participant, sub_attr, listener_);
-    return subscriber_ != nullptr;
-}
-
 bool Manager::NeedPublish(const ChangeMsg& msg) const {
     (void)msg;
     return true;
@@ -189,13 +161,15 @@ void Manager::Notify(const ChangeMsg& msg) {
 }
 
 void Manager::OnRemoteChange(const std::string& msg_str) {
+    (void)msg_str;
+}
+
+void Manager::HandleRemoteChange(const ChangeMsg& msg) {
     if (is_shutdown_.load()) {
         ADEBUG << "the manager has been shut down.";
         return;
     }
 
-    ChangeMsg msg;
-    RETURN_IF(!message::ParseFromString(msg_str, &msg));
     if (IsFromSameProcess(msg)) {
         return;
     }
@@ -208,16 +182,16 @@ bool Manager::Publish(const ChangeMsg& msg) {
         ADEBUG << "discovery is not started.";
         return false;
     }
-
-    autolink::transport::UnderlayMessage m;
-    RETURN_VAL_IF(!message::SerializeToString(msg, &m.data()), false);
+    ITopologyBackend* backend = nullptr;
     {
-        std::lock_guard<std::mutex> lg(lock_);
-        if (publisher_ != nullptr) {
-            return publisher_->write(reinterpret_cast<void*>(&m));
-        }
+        std::lock_guard<std::mutex> lock(backend_mutex_);
+        backend = topology_backend_;
     }
-    return true;
+    if (backend == nullptr) {
+        AERROR << "topology backend is not set.";
+        return false;
+    }
+    return backend->Publish(msg);
 }
 
 bool Manager::IsFromSameProcess(const ChangeMsg& msg) {

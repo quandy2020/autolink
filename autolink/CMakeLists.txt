@@ -128,9 +128,14 @@ endif()
 target_link_libraries(autolink PUBLIC
     ${Protobuf_LIBRARIES}
     ${GLOG_LIBRARIES}
+    ${RT_LIB}
 )
 if(_AUTOLINK_TINYXML2_LIB)
   target_link_libraries(autolink PUBLIC ${_AUTOLINK_TINYXML2_LIB})
+endif()
+
+if(UNIX AND NOT APPLE)
+  target_link_libraries(autolink PUBLIC atomic)
 endif()
 
 # 可执行程序：mainboard（始终构建）
@@ -186,6 +191,9 @@ if(AUTOLINK_BUILD_TEST AND GMock_FOUND)
       ${GMOCK_INCLUDE_DIRS}
     )
     target_link_libraries(${TEST_TARGET_NAME} PRIVATE autolink ${GMOCK_LIBRARIES})
+    if(UNIX AND NOT APPLE)
+      target_link_libraries(${TEST_TARGET_NAME} PRIVATE atomic)
+    endif()
     # Some vendored/system headers trigger -Wmaybe-uninitialized in tests (treated as error in this build).
     # Keep production library strict; relax only for test targets.
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

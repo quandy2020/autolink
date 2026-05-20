@@ -23,21 +23,21 @@
 #include "autolink/common/macros.hpp"
 #include "autolink/proto/transport_conf.pb.h"
 #include "autolink/transport/dispatcher/intra_dispatcher.hpp"
-#include "autolink/transport/dispatcher/rtps_dispatcher.hpp"
 #include "autolink/transport/dispatcher/shm_dispatcher.hpp"
 #include "autolink/transport/qos/qos_profile_conf.hpp"
-#include "autolink/transport/receiver/hybrid_receiver.hpp"
 #include "autolink/transport/receiver/intra_receiver.hpp"
 #include "autolink/transport/receiver/receiver.hpp"
-#include "autolink/transport/receiver/rtps_receiver.hpp"
 #include "autolink/transport/receiver/shm_receiver.hpp"
-#include "autolink/transport/rtps/participant.hpp"
 #include "autolink/transport/shm/notifier_factory.hpp"
-#include "autolink/transport/transmitter/hybrid_transmitter.hpp"
 #include "autolink/transport/transmitter/intra_transmitter.hpp"
-#include "autolink/transport/transmitter/rtps_transmitter.hpp"
 #include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
+
+namespace autolink {
+namespace transport {
+using ParticipantPtr = std::shared_ptr<void>;
+}
+}
 
 namespace autolink {
 namespace transport {
@@ -53,14 +53,14 @@ public:
 
     template <typename M>
     auto CreateTransmitter(const RoleAttributes& attr,
-                           const OptionalMode& mode = OptionalMode::HYBRID) ->
+                           const OptionalMode& mode = OptionalMode::SHM) ->
         typename std::shared_ptr<Transmitter<M>>;
 
     template <typename M>
     auto CreateReceiver(
         const RoleAttributes& attr,
         const typename Receiver<M>::MessageListener& msg_listener,
-        const OptionalMode& mode = OptionalMode::HYBRID) ->
+        const OptionalMode& mode = OptionalMode::SHM) ->
         typename std::shared_ptr<Receiver<M>>;
 
     ParticipantPtr participant() const {
@@ -68,14 +68,11 @@ public:
     }
 
 private:
-    void CreateParticipant();
-
     std::atomic<bool> is_shutdown_ = {false};
     ParticipantPtr participant_ = nullptr;
     NotifierPtr notifier_ = nullptr;
     IntraDispatcherPtr intra_dispatcher_ = nullptr;
     ShmDispatcherPtr shm_dispatcher_ = nullptr;
-    RtpsDispatcherPtr rtps_dispatcher_ = nullptr;
 
     DECLARE_SINGLETON(Transport)
 };
@@ -106,13 +103,11 @@ auto Transport::CreateTransmitter(const RoleAttributes& attr,
             break;
 
         case OptionalMode::RTPS:
-            transmitter = std::make_shared<RtpsTransmitter<M>>(modified_attr,
-                                                               participant());
+            transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
             break;
 
         default:
-            transmitter = std::make_shared<HybridTransmitter<M>>(modified_attr,
-                                                                 participant());
+            transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
             break;
     }
 
@@ -153,12 +148,12 @@ auto Transport::CreateReceiver(
 
         case OptionalMode::RTPS:
             receiver =
-                std::make_shared<RtpsReceiver<M>>(modified_attr, msg_listener);
+                std::make_shared<ShmReceiver<M>>(modified_attr, msg_listener);
             break;
 
         default:
-            receiver = std::make_shared<HybridReceiver<M>>(
-                modified_attr, msg_listener, participant());
+            receiver =
+                std::make_shared<ShmReceiver<M>>(modified_attr, msg_listener);
             break;
     }
 

@@ -93,6 +93,16 @@ void ShmReceiver<M>::Disable() {
 
 template <typename M>
 void ShmReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
+    // ShmReceiver::Enable() already registers a channel-level listener.
+    // Registering an extra opposite_attr listener for the same receiver causes
+    // duplicated callbacks for each message.
+    if (this->enabled_) {
+        ADEBUG << "SHM receiver already enabled for channel ["
+               << this->attr_.channel_name()
+               << "], skip duplicate per-writer enable.";
+        return;
+    }
+
     if (autolink::common::GlobalData::Instance()->IsChannelEnableArenaShm(
             this->attr_.channel_id()) &&
         message::MessageType<M>() !=
@@ -114,6 +124,9 @@ void ShmReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
 
 template <typename M>
 void ShmReceiver<M>::Disable(const RoleAttributes& opposite_attr) {
+    if (this->enabled_) {
+        return;
+    }
     dispatcher_->RemoveListener<M>(this->attr_, opposite_attr);
 }
 

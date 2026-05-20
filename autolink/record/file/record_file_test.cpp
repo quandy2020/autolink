@@ -23,7 +23,6 @@
 #include "autolink/record/file/record_file_reader.hpp"
 #include "autolink/record/file/record_file_writer.hpp"
 #include "autolink/record/header_builder.hpp"
-#include "gflags/gflags.h"
 #include "gtest/gtest.h"
 
 namespace autolink {

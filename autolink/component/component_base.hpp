@@ -27,7 +27,6 @@
 #include "autolink/node/node.hpp"
 #include "autolink/proto/component_conf.pb.h"
 #include "autolink/scheduler/scheduler.hpp"
-#include "gflags/gflags.h"
 
 namespace autolink {
 
@@ -97,7 +96,6 @@ protected:
             } else {
                 AINFO << "use flag file: " << flag_file_path;
             }
-            google::SetCommandLineOption("flagfile", flag_file_path.c_str());
         }
     }
 
@@ -124,7 +122,6 @@ protected:
             } else {
                 AINFO << "use flag file: " << flag_file_path;
             }
-            google::SetCommandLineOption("flagfile", flag_file_path.c_str());
         }
     }
 

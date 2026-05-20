@@ -16,7 +16,7 @@
 
 #include "autolink/transport/common/identity.hpp"
 
-#include <uuid/uuid.h>
+#include <random>
 
 #include "autolink/common/util.hpp"
 
@@ -26,9 +26,10 @@ namespace transport {
 Identity::Identity(bool need_generate) : hash_value_(0) {
     std::memset(data_, 0, ID_SIZE);
     if (need_generate) {
-        uuid_t uuid;
-        uuid_generate(uuid);
-        std::memcpy(data_, uuid, ID_SIZE);
+        std::random_device rd;
+        for (size_t i = 0; i < ID_SIZE; ++i) {
+            data_[i] = static_cast<char>(rd());
+        }
         Update();
     }
 }

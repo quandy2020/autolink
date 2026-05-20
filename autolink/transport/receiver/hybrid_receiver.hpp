@@ -32,9 +32,7 @@
 #include "autolink/task/task.hpp"
 #include "autolink/time/time.hpp"
 #include "autolink/transport/receiver/intra_receiver.hpp"
-#include "autolink/transport/receiver/rtps_receiver.hpp"
 #include "autolink/transport/receiver/shm_receiver.hpp"
-#include "autolink/transport/rtps/participant.hpp"
 
 namespace autolink {
 namespace transport {
@@ -90,7 +88,6 @@ private:
     CommunicationModePtr mode_;
     MappingTable mapping_table_;
 
-    ParticipantPtr participant_;
 };
 
 template <typename M>
@@ -98,9 +95,8 @@ HybridReceiver<M>::HybridReceiver(
     const RoleAttributes& attr,
     const typename Receiver<M>::MessageListener& msg_listener,
     const ParticipantPtr& participant)
-    : Receiver<M>(attr, msg_listener),
-      history_(nullptr),
-      participant_(participant) {
+    : Receiver<M>(attr, msg_listener), history_(nullptr) {
+    (void)participant;
     InitMode();
     ObtainConfig();
     InitHistory();
@@ -213,7 +209,7 @@ void HybridReceiver<M>::InitReceivers() {
                 break;
             default:
                 receivers_[mode] =
-                    std::make_shared<RtpsReceiver<M>>(this->attr_, listener);
+                    std::make_shared<ShmReceiver<M>>(this->attr_, listener);
                 break;
         }
     }
@@ -273,7 +269,7 @@ void HybridReceiver<M>::ThreadFunc(const RoleAttributes& opposite_attr) {
         this->OnNewMessage(msg, msg_info);
     };
 
-    auto receiver = std::make_shared<RtpsReceiver<M>>(attr, listener);
+    auto receiver = std::make_shared<ShmReceiver<M>>(attr, listener);
     receiver->Enable();
 
     do {

@@ -162,8 +162,10 @@ void ShmTransmitter<M>::Enable() {
 
     if (serialized_receiver_count_.load() == 0 &&
         arena_receiver_count_.load() == 0) {
-        AERROR << "please enable shm transmitter by passing role attr.";
-        return;
+        // Service/Client channels may start sending before topology callbacks
+        // update opposite role counts. Enable eagerly to avoid dropping
+        // request/response traffic in local SHM mode.
+        ADEBUG << "no discovered shm receiver yet, enable transmitter eagerly.";
     }
 
     if (arena_transmit_) {

@@ -532,6 +532,10 @@ public:
         current_handle_->PublishFeedback(feedback);
     }
 
+    bool HasFeedbackSubscriber() const {
+        return action_server_ && action_server_->HasFeedbackSubscriber();
+    }
+
 protected:
     std::shared_ptr<autolink::Node> node_;
     std::string action_name_;

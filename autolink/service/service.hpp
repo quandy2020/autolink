@@ -167,6 +167,9 @@ bool Service<Request, Response>::Init() {
         return true;
     }
     proto::RoleAttributes role;
+    role.set_host_name(common::GlobalData::Instance()->HostName());
+    role.set_host_ip(common::GlobalData::Instance()->HostIp());
+    role.set_process_id(common::GlobalData::Instance()->ProcessId());
     role.set_node_name(node_name_);
     role.set_channel_name(response_channel_);
     auto channel_id = common::GlobalData::RegisterChannel(response_channel_);
@@ -175,7 +178,7 @@ bool Service<Request, Response>::Init() {
         transport::QosProfileConf::QOS_PROFILE_SERVICES_DEFAULT);
     auto transport = transport::Transport::Instance();
     response_transmitter_ =
-        transport->CreateTransmitter<Response>(role, proto::OptionalMode::RTPS);
+        transport->CreateTransmitter<Response>(role, proto::OptionalMode::SHM);
     if (response_transmitter_ == nullptr) {
         AERROR << " Create response pub failed.";
         return false;
@@ -199,7 +202,7 @@ bool Service<Request, Response>::Init() {
             };
             Enqueue(std::move(task));
         },
-        proto::OptionalMode::RTPS);
+        proto::OptionalMode::SHM);
     inited_ = true;
     thread_ = std::thread(&Service<Request, Response>::Process, this);
     if (request_receiver_ == nullptr) {

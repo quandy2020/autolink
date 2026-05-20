@@ -247,29 +247,6 @@ const Descriptor* ProtobufFactory::FindMessageTypeByFile(
     return descriptor;
 }
 
-#if GOOGLE_PROTOBUF_VERSION >= 3021000
-void ErrorCollector::RecordError(absl::string_view filename,
-                                 absl::string_view element_name,
-                                 const google::protobuf::Message* descriptor,
-                                 ErrorLocation location,
-                                 absl::string_view message) {
-    UNUSED(element_name);
-    UNUSED(descriptor);
-    UNUSED(location);
-    AWARN << "[" << filename << "] " << message;
-}
-
-void ErrorCollector::RecordWarning(absl::string_view filename,
-                                   absl::string_view element_name,
-                                   const google::protobuf::Message* descriptor,
-                                   ErrorLocation location,
-                                   absl::string_view message) {
-    UNUSED(element_name);
-    UNUSED(descriptor);
-    UNUSED(location);
-    AWARN << "[" << filename << "] " << message;
-}
-#else
 void ErrorCollector::AddError(const std::string& filename,
                               const std::string& element_name,
                               const google::protobuf::Message* descriptor,
@@ -291,7 +268,6 @@ void ErrorCollector::AddWarning(const std::string& filename,
     UNUSED(location);
     AWARN << "[" << filename << "] " << message;
 }
-#endif
 
 }  // namespace message
 }  // namespace autolink

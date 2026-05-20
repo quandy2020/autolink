@@ -16,6 +16,7 @@
 
 #include "autolink/tools/autolink_recorder/player/player.hpp"
 
+#include <iomanip>
 #include <termios.h>
 
 #include "autolink/init.hpp"

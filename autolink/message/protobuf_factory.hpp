@@ -28,10 +28,6 @@
 #include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/io/tokenizer.h"
 
-#if GOOGLE_PROTOBUF_VERSION >= 3021000
-#include "absl/strings/string_view.h"
-#endif
-
 namespace autolink {
 namespace message {
 
@@ -48,18 +44,6 @@ class ErrorCollector : public google::protobuf::DescriptorPool::ErrorCollector
         google::protobuf::DescriptorPool::ErrorCollector::ErrorLocation;
 
 public:
-#if GOOGLE_PROTOBUF_VERSION >= 3021000
-    void RecordError(absl::string_view filename, absl::string_view element_name,
-                     const google::protobuf::Message* descriptor,
-                     ErrorLocation location,
-                     absl::string_view message) override;
-
-    void RecordWarning(absl::string_view filename,
-                       absl::string_view element_name,
-                       const google::protobuf::Message* descriptor,
-                       ErrorLocation location,
-                       absl::string_view message) override;
-#else
     void AddError(const std::string& filename, const std::string& element_name,
                   const google::protobuf::Message* descriptor,
                   ErrorLocation location, const std::string& message) override;
@@ -69,7 +53,6 @@ public:
                     const google::protobuf::Message* descriptor,
                     ErrorLocation location,
                     const std::string& message) override;
-#endif
 };
 
 class ProtobufFactory

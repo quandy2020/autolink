@@ -105,12 +105,16 @@ inline ListenerHandler<message::RawMessage>::ListenerHandler() {
 template <typename MessageT>
 void ListenerHandler<MessageT>::Connect(uint64_t self_id,
                                         const Listener& listener) {
+    WriteLockGuard<AtomicRWLock> lock(rw_lock_);
+    auto it = signal_conns_.find(self_id);
+    if (it != signal_conns_.end()) {
+        it->second.Disconnect();
+    }
+
     auto connection = signal_.Connect(listener);
     if (!connection.IsConnected()) {
         return;
     }
-
-    WriteLockGuard<AtomicRWLock> lock(rw_lock_);
     signal_conns_[self_id] = connection;
 }
 
@@ -130,6 +134,11 @@ void ListenerHandler<MessageT>::Connect(uint64_t self_id, uint64_t oppo_id,
 
     if (signals_conns_.find(oppo_id) == signals_conns_.end()) {
         signals_conns_[oppo_id] = ConnectionMap();
+    } else {
+        auto conn_it = signals_conns_[oppo_id].find(self_id);
+        if (conn_it != signals_conns_[oppo_id].end()) {
+            conn_it->second.Disconnect();
+        }
     }
 
     signals_conns_[oppo_id][self_id] = connection;

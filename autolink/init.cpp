@@ -40,7 +40,6 @@
 #include "autolink/time/clock.hpp"
 #include "autolink/timer/timing_wheel.hpp"
 #include "autolink/transport/transport.hpp"
-#include "gflags/gflags.h"
 
 namespace autolink {
 
@@ -130,20 +129,7 @@ bool Init(const char* binary_name, const std::string& dag_info) {
         clock_node->CreateReader<autolink::proto::Clock>(kClockChannel, cb);
     }
 
-    if (dag_info != "") {
-        std::string dump_path;
-        if (dag_info.length() > 200) {
-            std::string truncated = dag_info.substr(0, 200);
-            dump_path = common::GetEnv("AUTOLINK_ENV_WORKROOT", "/autolink") +
-                        "/dumps/" + truncated;
-        } else {
-            dump_path = common::GetEnv("AUTOLINK_ENV_WORKROOT", "/autolink") +
-                        "/dumps/" + dag_info;
-        }
-        google::SetCommandLineOption("bvar_dump_file", dump_path.c_str());
-    }
-    google::SetCommandLineOption("bvar_dump_exclude", "*qps");
-    google::SetCommandLineOption("bvar_dump", "true");
+    (void)dag_info;
 
     return true;
 }

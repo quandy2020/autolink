@@ -22,8 +22,6 @@ set -e
 CURR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 . ${CURR_DIR}/installer_base.sh
 
-TARGET_ARCH="$(uname -m)"
-
 ## NOTE:
 ## buildifier/buildozer was moved into install_bazel.sh.
 
@@ -32,15 +30,7 @@ apt_get_update_and_install \
 #    cppcheck
 #    valgrind
 
-# libgoogle-perftools4  # gperftools
-# PROFILER_SO="/usr/lib/${TARGET_ARCH}-linux-gnu/libprofiler.so"
-# if [ ! -e "${PROFILER_SO}" ]; then
-#    # libgoogle-perftools4: /usr/lib/x86_64-linux-gnu/libprofiler.so.0
-#    ln -s "${PROFILER_SO}.0" "${PROFILER_SO}"
-# fi
-
 bash ${CURR_DIR}/install_shellcheck.sh
-bash ${CURR_DIR}/install_gperftools.sh
 
 #bash ${CURR_DIR}/install_benchmark.sh
 # Generate Tech Docs

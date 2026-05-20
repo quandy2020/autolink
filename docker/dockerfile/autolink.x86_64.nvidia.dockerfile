@@ -57,7 +57,6 @@ RUN apt-get update && apt-get --no-install-recommends install -y \
     ninja-build \
     sphinx \
     python3-sphinx \
-    uuid-dev \
     libcivetweb-dev \
     libsuitesparse-dev \
     lsb-release \
@@ -93,7 +92,6 @@ RUN apt-get update && apt-get --no-install-recommends install -y \
     liburdfdom-dev \
     libgtk2.0-dev \
     clang-format \
-    uuid-dev \
     sqlite3 \
     stow && \
     rm -rf /var/lib/apt/lists/*
@@ -161,12 +159,9 @@ RUN chmod -R a+rw /opt/venv
 RUN mkdir /thirdparty
 RUN bash /tmp/install/install_gtest.sh
 RUN bash /tmp/install/install_glog.sh
-RUN bash /tmp/install/install_gflags.sh
 RUN bash /tmp/install/install_grpc.sh
-RUN bash /tmp/install/install_gperftools.sh
 RUN bash /tmp/install/install_opencv.sh
 RUN bash /tmp/install/install_nlohmann.sh
-RUN bash /tmp/install/install_fastdds.sh
 
 # autolink workspace
 ENV AUTOLINK_WS=/workspace/autolink

@@ -31,9 +31,7 @@
 #include "autolink/proto/transport_conf.pb.h"
 #include "autolink/task/task.hpp"
 #include "autolink/transport/message/history.hpp"
-#include "autolink/transport/rtps/participant.hpp"
 #include "autolink/transport/transmitter/intra_transmitter.hpp"
-#include "autolink/transport/transmitter/rtps_transmitter.hpp"
 #include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
 
@@ -94,16 +92,13 @@ private:
     CommunicationModePtr mode_;
     MappingTable mapping_table_;
 
-    ParticipantPtr participant_;
 };
 
 template <typename M>
 HybridTransmitter<M>::HybridTransmitter(const RoleAttributes& attr,
                                         const ParticipantPtr& participant)
-    : Transmitter<M>(attr),
-      history_(nullptr),
-      mode_(nullptr),
-      participant_(participant) {
+    : Transmitter<M>(attr), history_(nullptr), mode_(nullptr) {
+    (void)participant;
     InitMode();
     ObtainConfig();
     InitHistory();
@@ -235,8 +230,8 @@ void HybridTransmitter<M>::InitTransmitters() {
                     std::make_shared<ShmTransmitter<M>>(this->attr_);
                 break;
             default:
-                transmitters_[mode] = std::make_shared<RtpsTransmitter<M>>(
-                    this->attr_, participant_);
+                transmitters_[mode] =
+                    std::make_shared<ShmTransmitter<M>>(this->attr_);
                 break;
         }
     }
@@ -295,8 +290,7 @@ void HybridTransmitter<M>::ThreadFunc(
     uint64_t channel_id = common::GlobalData::RegisterChannel(new_channel_name);
     new_attr.set_channel_name(new_channel_name);
     new_attr.set_channel_id(channel_id);
-    auto new_transmitter =
-        std::make_shared<RtpsTransmitter<M>>(new_attr, participant_);
+    auto new_transmitter = std::make_shared<ShmTransmitter<M>>(new_attr);
     new_transmitter->Enable();
 
     for (auto& item : msgs) {

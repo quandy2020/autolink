@@ -181,6 +181,9 @@ void Client<Request, Response>::Destroy() {}
 template <typename Request, typename Response>
 bool Client<Request, Response>::Init() {
     proto::RoleAttributes role;
+    role.set_host_name(common::GlobalData::Instance()->HostName());
+    role.set_host_ip(common::GlobalData::Instance()->HostIp());
+    role.set_process_id(common::GlobalData::Instance()->ProcessId());
     role.set_node_name(node_name_);
     role.set_channel_name(request_channel_);
     auto channel_id = common::GlobalData::RegisterChannel(request_channel_);
@@ -189,7 +192,7 @@ bool Client<Request, Response>::Init() {
         transport::QosProfileConf::QOS_PROFILE_SERVICES_DEFAULT);
     auto transport = transport::Transport::Instance();
     request_transmitter_ =
-        transport->CreateTransmitter<Request>(role, proto::OptionalMode::RTPS);
+        transport->CreateTransmitter<Request>(role, proto::OptionalMode::SHM);
     if (request_transmitter_ == nullptr) {
         AERROR << "Create request pub failed.";
         return false;
@@ -212,7 +215,7 @@ bool Client<Request, Response>::Init() {
             (void)reader_attr;
             response_callback_(response, message_info);
         },
-        proto::OptionalMode::RTPS);
+        proto::OptionalMode::SHM);
     if (response_receiver_ == nullptr) {
         AERROR << "Create response sub failed.";
         request_transmitter_.reset();

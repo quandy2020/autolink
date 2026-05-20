@@ -18,6 +18,7 @@
 #include "autolink/time/rate.hpp"
 #include "autolink/time/time.hpp"
 #include "examples.pb.h"
+#include <unistd.h>
 
 using autolink::Rate;
 using autolink::Time;
@@ -32,7 +33,11 @@ int main(int argc, char* argv[]) {
     if (!autolink::Init(argv[0]))
         return 1;
 
-    auto node = autolink::CreateNode("talker_listener");
+    const std::string node_name = "talker_listener_" + std::to_string(getpid()) +
+                                  "_" +
+                                  std::to_string(Time::Now().ToNanosecond());
+    auto node = autolink::CreateNode(node_name);
+    AINFO << "talker_listener node name: " << node_name;
     auto writer = node->CreateWriter<Chatter>("channel/chatter");
     auto reader =
         node->CreateReader<Chatter>("channel/chatter", MessageCallback);

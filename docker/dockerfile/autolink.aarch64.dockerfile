@@ -41,7 +41,6 @@ RUN apt-get update && apt-get install -y sudo \
     python3-pip \
     python3-dev \
     python3-sphinx \
-    uuid-dev \
     libsuitesparse-dev \
     lsb-release \
     libompl-dev \
@@ -71,7 +70,6 @@ RUN apt-get update && apt-get install -y sudo \
     libeigen3-dev \
     libsqlite3-dev \
     libzmq3-dev \
-    uuid-dev \
     liburdfdom-dev \
     libgtk2.0-dev \
     clang-format \
@@ -102,12 +100,9 @@ RUN touch /root/.bashrc && \
 RUN mkdir /thirdparty
 RUN bash /tmp/install/install_gtest.sh
 RUN bash /tmp/install/install_glog.sh
-RUN bash /tmp/install/install_gflags.sh
 RUN bash /tmp/install/install_grpc.sh
-RUN bash /tmp/install/install_gperftools.sh
 RUN bash /tmp/install/install_opencv.sh
 RUN bash /tmp/install/install_nlohmann.sh
-RUN bash /tmp/install/install_fastdds.sh
 
 # autolink workspace
 ENV AUTOLINK_WS /workspace/autolink

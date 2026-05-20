@@ -106,6 +106,10 @@ public:
         }
     }
 
+    bool HasFeedbackSubscriber() {
+        return feedback_writer_ && feedback_writer_->HasReader();
+    }
+
 private:
     void Init();
 

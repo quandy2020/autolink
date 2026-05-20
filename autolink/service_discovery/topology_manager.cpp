@@ -16,9 +16,7 @@
 
 #include "autolink/service_discovery/topology_manager.hpp"
 
-#include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
-#include "autolink/time/time.hpp"
 
 namespace autolink {
 namespace service_discovery {
@@ -27,9 +25,7 @@ TopologyManager::TopologyManager()
     : init_(false),
       node_manager_(nullptr),
       channel_manager_(nullptr),
-      service_manager_(nullptr),
-      participant_(nullptr),
-      participant_listener_(nullptr) {
+      service_manager_(nullptr) {
     Init();
 }
 
@@ -47,10 +43,11 @@ void TopologyManager::Shutdown() {
     node_manager_->Shutdown();
     channel_manager_->Shutdown();
     service_manager_->Shutdown();
-    participant_->Shutdown();
-
-    delete participant_listener_;
-    participant_listener_ = nullptr;
+    if (backend_ != nullptr) {
+        backend_->Shutdown();
+        backend_ = nullptr;
+    }
+    Manager::SetTopologyBackend(nullptr);
 
     change_signal_.DisconnectAllSlots();
 }
@@ -73,16 +70,23 @@ bool TopologyManager::Init() {
     node_manager_ = std::make_shared<NodeManager>();
     channel_manager_ = std::make_shared<ChannelManager>();
     service_manager_ = std::make_shared<ServiceManager>();
-
-    CreateParticipant();
+    backend_ = std::make_unique<LocalTopologyBackend>();
+    if (!backend_->Start()) {
+        AERROR << "start local topology backend failed.";
+        init_.store(false);
+        return false;
+    }
+    Manager::SetTopologyBackend(backend_.get());
 
     bool result =
         InitNodeManager() && InitChannelManager() && InitServiceManager();
     if (!result) {
         AERROR << "init manager failed.";
-        participant_ = nullptr;
-        delete participant_listener_;
-        participant_listener_ = nullptr;
+        if (backend_ != nullptr) {
+            backend_->Shutdown();
+            backend_ = nullptr;
+        }
+        Manager::SetTopologyBackend(nullptr);
         node_manager_ = nullptr;
         channel_manager_ = nullptr;
         service_manager_ = nullptr;
@@ -94,116 +98,15 @@ bool TopologyManager::Init() {
 }
 
 bool TopologyManager::InitNodeManager() {
-    return node_manager_->StartDiscovery(participant_->fastrtps_participant());
+    return node_manager_->StartDiscovery(nullptr);
 }
 
 bool TopologyManager::InitChannelManager() {
-    return channel_manager_->StartDiscovery(
-        participant_->fastrtps_participant());
+    return channel_manager_->StartDiscovery(nullptr);
 }
 
 bool TopologyManager::InitServiceManager() {
-    return service_manager_->StartDiscovery(
-        participant_->fastrtps_participant());
-}
-
-bool TopologyManager::CreateParticipant() {
-    std::string participant_name =
-        common::GlobalData::Instance()->HostName() + '+' +
-        std::to_string(common::GlobalData::Instance()->ProcessId());
-    participant_listener_ = new ParticipantListener(std::bind(
-        &TopologyManager::OnParticipantChange, this, std::placeholders::_1));
-    participant_ = std::make_shared<transport::Participant>(
-        participant_name, 11511, participant_listener_);
-    return true;
-}
-
-void TopologyManager::OnParticipantChange(const PartInfo& info) {
-    ChangeMsg msg;
-    if (!Convert(info, &msg)) {
-        return;
-    }
-
-    if (!init_.load()) {
-        return;
-    }
-
-    if (msg.operate_type() == OperateType::OPT_LEAVE) {
-        auto& host_name = msg.role_attr().host_name();
-        int process_id = msg.role_attr().process_id();
-        node_manager_->OnTopoModuleLeave(host_name, process_id);
-        channel_manager_->OnTopoModuleLeave(host_name, process_id);
-        service_manager_->OnTopoModuleLeave(host_name, process_id);
-    }
-    change_signal_(msg);
-}
-
-bool TopologyManager::Convert(const PartInfo& info, ChangeMsg* msg) {
-    // Fast-DDS 2.x: ParticipantDiscoveryInfo has .status and .info
-    // (ParticipantProxyData)
-    const auto& guid = info.info.m_guid;
-    auto status = info.status;
-    std::string participant_name("");
-    OperateType opt_type = OperateType::OPT_JOIN;
-
-    switch (status) {
-        case eprosima::fastrtps::rtps::ParticipantDiscoveryInfo::
-            DISCOVERED_PARTICIPANT:
-            participant_name = info.info.m_participantName.c_str();
-            participant_names_[guid] = participant_name;
-            opt_type = OperateType::OPT_JOIN;
-            break;
-
-        case eprosima::fastrtps::rtps::ParticipantDiscoveryInfo::
-            REMOVED_PARTICIPANT:
-        case eprosima::fastrtps::rtps::ParticipantDiscoveryInfo::
-            DROPPED_PARTICIPANT:
-            if (participant_names_.find(guid) != participant_names_.end()) {
-                participant_name = participant_names_[guid];
-                participant_names_.erase(guid);
-            }
-            opt_type = OperateType::OPT_LEAVE;
-            break;
-
-        default:
-            break;
-    }
-
-    std::string host_name("");
-    int process_id = 0;
-    if (!ParseParticipantName(participant_name, &host_name, &process_id)) {
-        return false;
-    }
-
-    msg->set_timestamp(autolink::Time::Now().ToNanosecond());
-    msg->set_change_type(ChangeType::CHANGE_PARTICIPANT);
-    msg->set_operate_type(opt_type);
-    msg->set_role_type(RoleType::ROLE_PARTICIPANT);
-    auto role_attr = msg->mutable_role_attr();
-    role_attr->set_host_name(host_name);
-    role_attr->set_process_id(process_id);
-    return true;
-}
-
-bool TopologyManager::ParseParticipantName(const std::string& participant_name,
-                                           std::string* host_name,
-                                           int* process_id) {
-    // participant_name format: host_name+process_id
-    auto pos = participant_name.find('+');
-    if (pos == std::string::npos) {
-        ADEBUG << "participant_name [" << participant_name
-               << "] format mismatch.";
-        return false;
-    }
-    *host_name = participant_name.substr(0, pos);
-    std::string pid_str = participant_name.substr(pos + 1);
-    try {
-        *process_id = std::stoi(pid_str);
-    } catch (const std::exception& e) {
-        AERROR << "invalid process_id:" << e.what();
-        return false;
-    }
-    return true;
+    return service_manager_->StartDiscovery(nullptr);
 }
 
 }  // namespace service_discovery
