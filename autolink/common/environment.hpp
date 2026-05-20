@@ -16,31 +16,68 @@
 
 #pragma once
 
-#include <cassert>
+#include <cstdlib>
 #include <string>
 
-#include "autolink/common/log.hpp"
+#include "autolink/conf/conf.hpp"
 
 namespace autolink {
 namespace common {
 
+/**
+ * @brief Reads an environment variable; returns @p default_value when unset.
+ * Does not log warnings (env vars are optional overrides only).
+ */
 inline std::string GetEnv(const std::string& var_name,
                           const std::string& default_value = "") {
     const char* var = std::getenv(var_name.c_str());
-    if (var == nullptr) {
-        AWARN << "Environment variable [" << var_name
-              << "] not set, fallback to " << default_value;
+    if (var == nullptr || var[0] == '\0') {
         return default_value;
     }
     return std::string(var);
 }
 
-inline const std::string WorkRoot() {
-    std::string work_root = GetEnv("AUTOLINK_PATH");
-    if (work_root.empty()) {
-        work_root = "/autolink";
+/**
+ * @brief Install / distribution root (AUTOLINK_DISTRIBUTION_HOME if set).
+ */
+inline std::string DistributionHome() {
+    const std::string from_env = GetEnv("AUTOLINK_DISTRIBUTION_HOME");
+    if (!from_env.empty()) {
+        return from_env;
     }
-    return work_root;
+    return conf::kDefaultDistributionHome;
+}
+
+/**
+ * @brief Plugin index search path(s), colon-separated (AUTOLINK_PLUGIN_INDEX_PATH
+ * if set, otherwise install-tree default).
+ */
+inline std::string DefaultPluginIndexPath() {
+    const std::string from_env = GetEnv("AUTOLINK_PLUGIN_INDEX_PATH");
+    if (!from_env.empty()) {
+        return from_env;
+    }
+    return conf::kDefaultPluginIndexDir;
+}
+
+/**
+ * @brief Autolink configuration root (directory containing conf/).
+ * Uses AUTOLINK_PATH when set; otherwise derives from kDefaultConfDir.
+ */
+inline std::string WorkRoot() {
+    const std::string from_env = GetEnv("AUTOLINK_PATH");
+    if (!from_env.empty()) {
+        return from_env;
+    }
+
+    std::string conf_dir = conf::kDefaultConfDir;
+    static const std::string kConfSuffix = "/conf";
+    if (conf_dir.size() > kConfSuffix.size() &&
+        conf_dir.compare(conf_dir.size() - kConfSuffix.size(), kConfSuffix.size(),
+                         kConfSuffix) == 0) {
+        return conf_dir.substr(0, conf_dir.size() - kConfSuffix.size());
+    }
+    return conf::kDefaultDistributionHome;
 }
 
 }  // namespace common

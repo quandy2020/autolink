@@ -146,17 +146,10 @@ bool PluginManager::FindPluginIndexAndLoad(
 }
 
 bool PluginManager::LoadInstalledPlugins() {
-    std::string plugin_index_path =
-        autolink::common::GetEnv("AUTOLINK_PLUGIN_INDEX_PATH");
-    if (plugin_index_path.empty()) {
-        // env not set, use default
-        const std::string autolink_distribution_home =
-            autolink::common::GetEnv("AUTOLINK_DISTRIBUTION_HOME");
-        plugin_index_path =
-            autolink_distribution_home + "/share/autolink_plugin_index";
-    }
-    AINFO << "loading plugins from AUTOLINK_PLUGIN_INDEX_PATH["
-          << plugin_index_path << "]";
+    const std::string plugin_index_path =
+        autolink::common::DefaultPluginIndexPath();
+    AINFO << "loading plugins from plugin index path[" << plugin_index_path
+          << "]";
     size_t begin = 0;
     size_t index;
     do {

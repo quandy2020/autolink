@@ -37,13 +37,10 @@ TEST(EnvironmentTest, get_env) {
 }
 
 TEST(EnvironmentTest, work_root) {
-    std::string before = WorkRoot();
+    setenv("AUTOLINK_PATH", "/custom/autolink/root", 1);
+    EXPECT_EQ(WorkRoot(), "/custom/autolink/root");
     unsetenv("AUTOLINK_PATH");
-    std::string after = GetEnv("AUTOLINK_PATH");
-    EXPECT_EQ(after, "");
-    setenv("AUTOLINK_PATH", before.c_str(), 1);
-    after = WorkRoot();
-    EXPECT_EQ(after, before);
+    EXPECT_FALSE(WorkRoot().empty());
 }
 
 }  // namespace common

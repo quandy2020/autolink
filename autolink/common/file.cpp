@@ -31,6 +31,7 @@
 
 #include "google/protobuf/util/json_util.h"
 #include "nlohmann/json.hpp"
+#include "autolink/common/environment.hpp"
 #include "autolink/conf/conf.hpp"
 
 namespace autolink {
@@ -454,11 +455,21 @@ bool GetFilePathWithEnv(const std::string& path, const std::string& env_var,
     }
 
     const char* var = std::getenv(env_var.c_str());
-    if (var == nullptr) {
-        AWARN << "GetFilePathWithEnv: env " << env_var << " not found.";
+    std::string env_path;
+    if (var != nullptr && var[0] != '\0') {
+        env_path = std::string(var);
+    } else if (env_var == "AUTOLINK_CONF_PATH" || env_var == "AUTOLINK_FLAG_PATH") {
+        env_path = WorkRoot();
+    } else if (env_var == "AUTOLINK_PLUGIN_LIB_PATH" ||
+               env_var == "AUTOLINK_PLUGIN_DESCRIPTION_PATH") {
+        env_path = DistributionHome();
+    } else if (env_var == "AUTOLINK_DAG_PATH") {
+        env_path = DistributionHome() + "/share/autolink/dag";
+    } else if (env_var == "AUTOLINK_LIB_PATH") {
+        env_path = DistributionHome() + "/lib";
+    } else {
         return relative_path_exists;
     }
-    std::string env_path = std::string(var);
 
     // search by environment variable
     size_t begin = 0;

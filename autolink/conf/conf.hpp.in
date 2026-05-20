@@ -19,7 +19,18 @@
 namespace autolink {
 namespace conf {
 
+/** Baked at configure time: source-tree or build-tree conf directory. */
 static constexpr const char* kDefaultConfDir = "@AUTOLINK_DEFAULT_CONF_DIR@";
+
+/** CMake install prefix (e.g. /usr/local). */
+static constexpr const char* kInstallPrefix = "@CMAKE_INSTALL_PREFIX@";
+
+/** Install-tree distribution root (same as install prefix). */
+static constexpr const char* kDefaultDistributionHome = "@CMAKE_INSTALL_PREFIX@";
+
+/** Default plugin index directory under the install prefix. */
+static constexpr const char* kDefaultPluginIndexDir =
+    "@AUTOLINK_DEFAULT_PLUGIN_INDEX_DIR@";
 
 }  // namespace conf
 }  // namespace autolink

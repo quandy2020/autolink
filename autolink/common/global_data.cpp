@@ -222,16 +222,14 @@ bool GlobalData::InitConfig() {
             "/usr/local/share/autolink/conf/autolink.pb.conf";
         if (PathExists(fallback)) {
             config_path = fallback;
-            AINFO << "config_path: " << config_path
-                  << " (fallback, set AUTOLINK_PATH to override)";
+            AINFO << "config_path: " << config_path << " (install-tree fallback)";
         }
     } else {
         AINFO << "config_path: " << config_path;
     }
     if (!GetProtoFromFile(config_path, &config_)) {
         AERROR << "read autolink conf failed: " << config_path
-               << " (set AUTOLINK_PATH to config root, e.g. "
-                  "/usr/local/share/autolink or path/to/autolink)";
+               << " (optional override: export AUTOLINK_PATH=<conf parent>)";
         return false;
     }
     return true;
