@@ -1,3 +1,20 @@
+
+/******************************************************************************
+ * Copyright 2026 The Openbot Authors (duyongquan)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *****************************************************************************/
+ 
 /******************************************************************************
  * Copyright 2025 The Openbot Authors (duyongquan)
  *
@@ -14,87 +31,19 @@
  * 参考文档: docs/source/autolink_pod_message_cn.md
  *****************************************************************************/
 
-#include <cstdint>
-#include <cstring>
 #include <string>
-#include <type_traits>
 #include <unistd.h>
 
 #include "autolink/autolink.hpp"
 #include "autolink/time/rate.hpp"
 #include "autolink/time/time.hpp"
+#include "examples/cpp/pod_packet.hpp"
 
 namespace {
 
 using autolink::Rate;
 using autolink::Time;
-
-struct SimplePod {
-    uint64_t seq;
-    double value;
-    uint64_t timestamp_ns;
-};
-
-static_assert(std::is_trivially_copyable<SimplePod>::value,
-              "SimplePod must be trivially copyable");
-
-// 包装类型：给框架提供序列化/反序列化接口。
-struct PodPacket {
-    SimplePod pod{};
-
-    class Descriptor
-    {
-    public:
-        std::string full_name() const {
-            return "autolink.examples.SimplePodPacket";
-        }
-    };
-
-    static const Descriptor* descriptor() {
-        static Descriptor desc;
-        return &desc;
-    }
-
-    static std::string TypeName() {
-        return "autolink.examples.SimplePodPacket";
-    }
-
-    size_t ByteSizeLong() const {
-        return sizeof(SimplePod);
-    }
-
-    bool SerializeToArray(void* data, int size) const {
-        if (data == nullptr || size < static_cast<int>(sizeof(SimplePod))) {
-            return false;
-        }
-        std::memcpy(data, &pod, sizeof(SimplePod));
-        return true;
-    }
-
-    bool ParseFromArray(const void* data, int size) {
-        if (data == nullptr || size < static_cast<int>(sizeof(SimplePod))) {
-            return false;
-        }
-        std::memcpy(&pod, data, sizeof(SimplePod));
-        return true;
-    }
-
-    bool SerializeToString(std::string* out) const {
-        if (out == nullptr) {
-            return false;
-        }
-        out->assign(reinterpret_cast<const char*>(&pod), sizeof(SimplePod));
-        return true;
-    }
-
-    bool ParseFromString(const std::string& in) {
-        if (in.size() < sizeof(SimplePod)) {
-            return false;
-        }
-        std::memcpy(&pod, in.data(), sizeof(SimplePod));
-        return true;
-    }
-};
+using autolink::examples::PodPacket;
 
 void OnPodMessage(const std::shared_ptr<PodPacket>& msg) {
     if (!msg) {

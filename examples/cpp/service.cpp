@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2018 The Autolink Authors. All Rights Reserved.
+ * Copyright 2026 The Openbot Authors (duyongquan)
  *****************************************************************************/
 
 #include "autolink/autolink.hpp"
