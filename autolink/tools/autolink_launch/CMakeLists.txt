@@ -17,17 +17,6 @@
 add_executable(autolink_launch main.cpp)
 target_include_directories(autolink_launch PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(autolink_launch PRIVATE autolink)
-  # 显式链接 TinyXML2（与 autolink 一致，避免 ld 未解析符号）
-if(TARGET TinyXML2::TinyXML2)
-  target_link_libraries(autolink_launch PRIVATE TinyXML2::TinyXML2)
-else()
-  if(NOT TinyXML2_LIB)
-    find_library(TinyXML2_LIB NAMES tinyxml2)
-  endif()
-  if(TinyXML2_LIB)
-    target_link_libraries(autolink_launch PRIVATE ${TinyXML2_LIB})
-  endif()
-endif()
 
 install(TARGETS autolink_launch
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

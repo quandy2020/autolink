@@ -73,6 +73,42 @@ public:
     std::shared_ptr<Base> CreateInstance(const std::string& derived_class);
 
     /**
+     * @brief Register a class that is linked in-process (no external .so).
+     * Enables CreateInstance without a plugin description XML file.
+     */
+    template <typename Base>
+    bool RegisterInProcessClass(const std::string& derived_class,
+                                const std::string& plugin_name = "") {
+        int status = 0;
+        char* demangled =
+            abi::__cxa_demangle(typeid(Base).name(), 0, 0, &status);
+        const std::string base_class_name =
+            (status == 0 && demangled != nullptr) ? demangled
+                                                  : typeid(Base).name();
+        if (demangled != nullptr) {
+            free(demangled);
+        }
+
+        const std::string resolved_plugin_name =
+            plugin_name.empty() ? derived_class : plugin_name;
+        if (plugin_class_plugin_name_map_.find(
+                {derived_class, base_class_name}) !=
+            plugin_class_plugin_name_map_.end()) {
+            return true;
+        }
+
+        auto description =
+            std::make_shared<PluginDescription>(resolved_plugin_name);
+        description->class_name_base_class_name_map_[derived_class] =
+            base_class_name;
+        plugin_loaded_map_[resolved_plugin_name] = true;
+        plugin_description_map_[resolved_plugin_name] = description;
+        plugin_class_plugin_name_map_[{derived_class, base_class_name}] =
+            resolved_plugin_name;
+        return true;
+    }
+
+    /**
      * @brief find plugin index file and load plugins
      *
      * @param plugin_index_path plugin index file directory

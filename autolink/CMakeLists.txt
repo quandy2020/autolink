@@ -109,30 +109,19 @@ else()
 endif()
 
 target_include_directories(autolink PUBLIC
+    $<BUILD_INTERFACE:${AUTOLINK_ROOT_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     ${Protobuf_INCLUDE_DIRS}
 )
-
-set(_AUTOLINK_TINYXML2_LIB "${TinyXML2_LIB}")
-if(NOT _AUTOLINK_TINYXML2_LIB AND TinyXML2_LIBRARIES)
-  set(_AUTOLINK_TINYXML2_LIB "${TinyXML2_LIBRARIES}")
-endif()
-if(NOT _AUTOLINK_TINYXML2_LIB AND TinyXML2_LIBRARY)
-  set(_AUTOLINK_TINYXML2_LIB "${TinyXML2_LIBRARY}")
-endif()
-if(NOT _AUTOLINK_TINYXML2_LIB)
-  find_library(_AUTOLINK_TINYXML2_LIB NAMES tinyxml2)
-endif()
 
 target_link_libraries(autolink PUBLIC
     ${Protobuf_LIBRARIES}
     ${GLOG_LIBRARIES}
     ${RT_LIB}
+    TinyXML2::TinyXML2
 )
-if(_AUTOLINK_TINYXML2_LIB)
-  target_link_libraries(autolink PUBLIC ${_AUTOLINK_TINYXML2_LIB})
-endif()
 
 if(UNIX AND NOT APPLE)
   target_link_libraries(autolink PUBLIC atomic)

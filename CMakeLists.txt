@@ -54,7 +54,7 @@ endif()
 # find dependencies
 find_package(Protobuf REQUIRED)
 find_package(Glog REQUIRED)
-find_package(TinyXML2 QUIET)
+find_package(TinyXML2 REQUIRED)
 
 # add subdirectories（proto 已合并进 autolink/CMakeLists.txt）
 add_subdirectory(autolink)
@@ -76,11 +76,20 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 # 库与可执行文件（autolink_proto 已静态链接进 autolink，仅安装 libautolink.so）
-install(TARGETS autolink
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(CMAKE_PROJECT_NAME STREQUAL "autonomy")
+  install(TARGETS autolink
+    EXPORT AutonomyExport
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+else()
+  install(TARGETS autolink
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+endif()
 install(TARGETS autolink_mainboard
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
