@@ -39,19 +39,6 @@ if [ -d "${INSTALL_ROOT}/lib/autolink/python/internal" ]; then
     export PYTHONPATH="${INSTALL_ROOT}/lib/autolink/python/internal:${PYTHONPATH}"
 fi
 
-# Add ROS 2 libraries (FastDDS is typically here)
-if [ -d "/opt/ros/humble/lib" ]; then
-    export LD_LIBRARY_PATH="/opt/ros/humble/lib:${LD_LIBRARY_PATH}"
-fi
-
-# Try to find FastDDS library in other common locations
-for path in /usr/lib /usr/local/lib /opt/fastdds/lib; do
-    if [ -f "${path}/libfastrtps.so.2.6" ] || [ -f "${path}/libfastrtps.so" ]; then
-        export LD_LIBRARY_PATH="${path}:${LD_LIBRARY_PATH}"
-        break
-    fi
-done
-
 # If sourced, don't execute anything else
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
     return 0

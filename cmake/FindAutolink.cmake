@@ -88,21 +88,6 @@ endif()
 
 # Detect interface include dependencies that are required by public headers.
 set(_Autolink_INTERFACE_INCLUDE_DIRS ${Autolink_INCLUDE_DIRS})
-find_path(Autolink_FASTDDS_INCLUDE_DIR
-    NAMES fastdds/dds/subscriber/DataReader.hpp
-    PATHS ${_Autolink_ROOT_PATHS}
-    PATH_SUFFIXES include
-    NO_DEFAULT_PATH
-)
-if(NOT Autolink_FASTDDS_INCLUDE_DIR)
-    find_path(Autolink_FASTDDS_INCLUDE_DIR
-        NAMES fastdds/dds/subscriber/DataReader.hpp
-        PATH_SUFFIXES include
-    )
-endif()
-if(Autolink_FASTDDS_INCLUDE_DIR)
-    list(APPEND _Autolink_INTERFACE_INCLUDE_DIRS "${Autolink_FASTDDS_INCLUDE_DIR}")
-endif()
 
 # 设置库文件
 if(Autolink_LIBRARY)

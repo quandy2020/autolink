@@ -112,35 +112,25 @@ target_include_directories(autolink PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
     ${Protobuf_INCLUDE_DIRS}
-    ${FastDDS_INCLUDE_DIRS}
 )
-if(abseil_FOUND)
-  target_link_libraries(autolink PUBLIC abseil::absl_base)
-elseif(EXISTS "/opt/homebrew/include/absl")
-  target_include_directories(autolink PUBLIC "/opt/homebrew/include")
+
+set(_AUTOLINK_TINYXML2_LIB "${TinyXML2_LIB}")
+if(NOT _AUTOLINK_TINYXML2_LIB AND TinyXML2_LIBRARIES)
+  set(_AUTOLINK_TINYXML2_LIB "${TinyXML2_LIBRARIES}")
+endif()
+if(NOT _AUTOLINK_TINYXML2_LIB AND TinyXML2_LIBRARY)
+  set(_AUTOLINK_TINYXML2_LIB "${TinyXML2_LIBRARY}")
+endif()
+if(NOT _AUTOLINK_TINYXML2_LIB)
+  find_library(_AUTOLINK_TINYXML2_LIB NAMES tinyxml2)
 endif()
 
 target_link_libraries(autolink PUBLIC
     ${Protobuf_LIBRARIES}
     ${GLOG_LIBRARIES}
-    ${FastDDS_LIBRARIES}
-    ${RT_LIB}
-    ${TinyXML2_LIB}
 )
-
-# Python embedding and tcmalloc can conflict at runtime (invalid free/abort).
-# When building Python bindings, strip tcmalloc from autolink link line by default,
-# but keep profiler library if available.
-if(GFLAGS_LIB)
-  target_link_libraries(autolink PUBLIC ${GFLAGS_LIB})
-endif()
-if(UUID_LIB)
-  target_link_libraries(autolink PUBLIC ${UUID_LIB})
-endif()
-
-# 128-bit 原子操作 (__atomic_load_16 等) 在 Linux 上由 libatomic 提供
-if(UNIX AND NOT APPLE)
-  target_link_libraries(autolink PUBLIC atomic)
+if(_AUTOLINK_TINYXML2_LIB)
+  target_link_libraries(autolink PUBLIC ${_AUTOLINK_TINYXML2_LIB})
 endif()
 
 # 可执行程序：mainboard（始终构建）
@@ -196,10 +186,6 @@ if(AUTOLINK_BUILD_TEST AND GMock_FOUND)
       ${GMOCK_INCLUDE_DIRS}
     )
     target_link_libraries(${TEST_TARGET_NAME} PRIVATE autolink ${GMOCK_LIBRARIES})
-    if(UNIX AND NOT APPLE)
-      target_link_libraries(${TEST_TARGET_NAME} PRIVATE atomic)
-    endif()
-
     # Some vendored/system headers trigger -Wmaybe-uninitialized in tests (treated as error in this build).
     # Keep production library strict; relax only for test targets.
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
