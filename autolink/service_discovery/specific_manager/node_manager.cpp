@@ -89,6 +89,14 @@ void NodeManager::DisposeJoin(const ChangeMsg& msg) {
             return;
         }
 
+        // Same node re-announced in this process (discovery echo or re-join): ignore.
+        if (existing_node->attributes().process_id() == process_id_ &&
+            existing_node->attributes().host_name() == host_name_ &&
+            existing_node->attributes().node_name() ==
+                node->attributes().node_name()) {
+            return;
+        }
+
         RolePtr newer_node = existing_node;
         if (node->IsEarlierThan(*newer_node)) {
             nodes_.Add(key, node);

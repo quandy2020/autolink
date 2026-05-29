@@ -98,10 +98,17 @@ GoalUUID GenerateGoalUUID();
  */
 bool IsValidGoalUUID(const GoalUUID& goal_id);
 
+/** True when all UUID bytes are zero (cancel-all request in ROS 2 action spec). */
+inline bool IsZeroGoalUUID(const GoalUUID& goal_id) {
+    return !IsValidGoalUUID(goal_id);
+}
+
 }  // namespace action
 }  // namespace autolink
 
-// Hash function for GoalUUID to use in unordered_map
+#ifndef AUTOLINK_SKIP_GOAL_UUID_STD_HASH
+// Hash / order for GoalUUID in autolink-only builds. Skip when linking with ROS
+// (rclcpp_action already specializes std::hash for the same array type).
 namespace std {
 template <>
 struct hash<autolink::action::GoalUUID> {
@@ -127,3 +134,4 @@ struct less<autolink::action::GoalUUID> {
     }
 };
 }  // namespace std
+#endif  // AUTOLINK_SKIP_GOAL_UUID_STD_HASH

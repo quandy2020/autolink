@@ -139,6 +139,15 @@ public:
         std::shared_ptr<GoalHandle> goal_handle);
 
     /**
+     * @brief Asynchronously request cancellation of all goals on the server.
+     *
+     * Sends a zero goal UUID (ROS 2 cancel-all semantics).
+     *
+     * @return std::shared_future<bool> Completes when the cancel service responds.
+     */
+    std::shared_future<bool> AsyncCancelAllGoals();
+
+    /**
      * @brief Check if the action server is ready.
      *
      * @return true if the server is ready, false otherwise.
@@ -232,16 +241,16 @@ Client<ActionT>::AsyncSendGoal(const Goal& goal,
     request->goal = goal;
 
     // Send request
-    AINFO << "AsyncSendGoal: sending goal request for goal ID: "
-          << ToString(goal_id);
+    ADEBUG << "AsyncSendGoal: sending goal request for goal ID: "
+           << ToString(goal_id);
     auto response_future = send_goal_client_->AsyncSendRequest(request);
-    AINFO << "AsyncSendGoal: request sent, waiting for response...";
+    ADEBUG << "AsyncSendGoal: request sent, waiting for response...";
     // Note: std::shared_future doesn't have then() in C++11/14
     // We'll use a thread or callback approach instead
     std::thread([this, promise, goal_id, options, request, response_future]() {
         try {
-            AINFO << "AsyncSendGoal: waiting for response for goal ID: "
-                  << ToString(goal_id);
+            ADEBUG << "AsyncSendGoal: waiting for response for goal ID: "
+                   << ToString(goal_id);
             // Wait for response with timeout
             auto status = response_future.wait_for(std::chrono::seconds(10));
             if (status == std::future_status::timeout) {
@@ -256,8 +265,8 @@ Client<ActionT>::AsyncSendGoal(const Goal& goal,
             }
 
             auto response = response_future.get();
-            AINFO << "AsyncSendGoal: received response for goal ID: "
-                  << ToString(goal_id);
+            ADEBUG << "AsyncSendGoal: received response for goal ID: "
+                   << ToString(goal_id);
 
             if (!response) {
                 AERROR << "AsyncSendGoal: received null response for goal ID: "
@@ -425,6 +434,28 @@ std::shared_future<bool> Client<ActionT>::AsyncCancelGoal(
             promise->set_value(response && response->goals_canceling > 0);
         } catch (const std::exception& e) {
             AERROR << "Error in AsyncCancelGoal response: " << e.what();
+            promise->set_value(false);
+        }
+    }).detach();
+
+    return future;
+}
+
+template <typename ActionT>
+std::shared_future<bool> Client<ActionT>::AsyncCancelAllGoals() {
+    auto promise = std::make_shared<std::promise<bool>>();
+    std::shared_future<bool> future(promise->get_future());
+
+    auto request = std::make_shared<internal::CancelGoalRequest>();
+    request->goal_id = GoalUUID{};
+
+    auto response_future = cancel_goal_client_->AsyncSendRequest(request);
+    std::thread([promise, response_future]() {
+        try {
+            auto response = response_future.get();
+            promise->set_value(static_cast<bool>(response));
+        } catch (const std::exception& e) {
+            AERROR << "Error in AsyncCancelAllGoals response: " << e.what();
             promise->set_value(false);
         }
     }).detach();

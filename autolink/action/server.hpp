@@ -175,8 +175,6 @@ private:
 template <typename ActionT>
 void Server<ActionT>::Init() {
     std::string node_name = node_->Name();
-    AINFO << "Server::Init: initializing action server for: " << action_name_;
-
     // Create SendGoal service
     send_goal_service_ = node_->CreateService<
         internal::SendGoalRequest<ActionT>, internal::SendGoalResponse>(
@@ -190,7 +188,6 @@ void Server<ActionT>::Init() {
         AERROR << "Server::Init: failed to create send_goal service";
         return;
     }
-    AINFO << "Server::Init: send_goal service created";
 
     // Create CancelGoal service
     cancel_goal_service_ = node_->CreateService<internal::CancelGoalRequest,
@@ -205,7 +202,6 @@ void Server<ActionT>::Init() {
         AERROR << "Server::Init: failed to create cancel_goal service";
         return;
     }
-    AINFO << "Server::Init: cancel_goal service created";
 
     // Create GetResult service
     get_result_service_ =
@@ -221,40 +217,36 @@ void Server<ActionT>::Init() {
         AERROR << "Server::Init: failed to create get_result service";
         return;
     }
-    AINFO << "Server::Init: get_result service created";
 
     // Create feedback writer
     std::string feedback_channel = action_name_ + "/feedback";
-    AINFO << "Server::Init: Creating feedback writer for channel: "
-          << feedback_channel;
     feedback_writer_ = node_->CreateWriter<internal::FeedbackMessage<ActionT>>(
         feedback_channel);
-    if (feedback_writer_) {
-        AINFO << "Server::Init: Feedback writer created successfully";
-    } else {
+    if (!feedback_writer_) {
         AERROR << "Server::Init: Failed to create feedback writer";
     }
 
     // Create status writer
     status_writer_ =
         node_->CreateWriter<internal::StatusMessage>(action_name_ + "/status");
-    AINFO << "Server::Init: status writer created";
-    AINFO << "Server::Init: all services and writers initialized successfully";
+    if (!status_writer_) {
+        AERROR << "Server::Init: Failed to create status writer";
+    }
 }
 
 template <typename ActionT>
 void Server<ActionT>::HandleSendGoal(
     const std::shared_ptr<internal::SendGoalRequest<ActionT>>& request,
     std::shared_ptr<internal::SendGoalResponse>& response) {
-    AINFO << "Server::HandleSendGoal: ENTERED - checking request and response";
+    ADEBUG << "Server::HandleSendGoal: ENTERED - checking request and response";
     if (!request || !response) {
         AERROR << "Server::HandleSendGoal: Invalid request or response";
         return;
     }
 
     GoalUUID goal_id = request->goal_id;
-    AINFO << "Server::HandleSendGoal: received goal request for goal ID: "
-          << ToString(goal_id);
+    ADEBUG << "Server::HandleSendGoal: received goal request for goal ID: "
+           << ToString(goal_id);
 
     auto goal = std::make_shared<const Goal>(request->goal);
 
@@ -309,18 +301,30 @@ void Server<ActionT>::HandleCancelGoal(
     }
 
     GoalUUID goal_id = request->goal_id;
-    auto goal_handle = GetGoalHandle(goal_id);
 
     int32_t goals_canceling = 0;
-    if (goal_handle) {
-        CancelResponse cancel_response = handle_cancel_(goal_handle);
-        if (cancel_response == CancelResponse::ACCEPT) {
-            if (goal_handle->NotifyCancelRequestAccepted()) {
-                goals_canceling = 1;
-            } else if (goal_handle->IsCanceling()) {
-                goals_canceling = 1;
-            }
+    auto try_cancel = [&](const std::shared_ptr<GoalHandle>& goal_handle) {
+        if (!goal_handle) {
+            return;
         }
+        CancelResponse cancel_response = handle_cancel_(goal_handle);
+        if (cancel_response != CancelResponse::ACCEPT) {
+            return;
+        }
+        if (goal_handle->NotifyCancelRequestAccepted() ||
+            goal_handle->IsCanceling()) {
+            ++goals_canceling;
+        }
+    };
+
+    if (IsZeroGoalUUID(goal_id)) {
+        std::lock_guard<std::mutex> lock(goal_handles_mutex_);
+        for (const auto& [uuid, weak_handle] : goal_handles_) {
+            (void)uuid;
+            try_cancel(weak_handle.lock());
+        }
+    } else {
+        try_cancel(GetGoalHandle(goal_id));
     }
 
     response->goals_canceling = goals_canceling;
@@ -414,9 +418,9 @@ void Server<ActionT>::OnTerminalState(const GoalUUID& uuid,
 
 template <typename ActionT>
 void Server<ActionT>::OnExecuting(const GoalUUID& uuid) {
-    AINFO << "Server::OnExecuting: ENTERED for goal ID: " << ToString(uuid);
+    ADEBUG << "Server::OnExecuting: ENTERED for goal ID: " << ToString(uuid);
     PublishStatus();
-    AINFO << "Server::OnExecuting: PublishStatus() returned, EXITING";
+    ADEBUG << "Server::OnExecuting: PublishStatus() returned, EXITING";
 }
 
 template <typename ActionT>

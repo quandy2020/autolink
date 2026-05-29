@@ -18,6 +18,7 @@
 
 #include <climits>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -422,27 +423,109 @@ public:
     }
 };
 
-// Status message - simplified version for internal use
+// Status message - internal action status broadcast (binary wire format).
 struct GoalStatusInfo {
-    GoalUUID goal_id;
-    int8_t status;
+    GoalUUID goal_id{};
+    int8_t status{0};
 };
 
 struct StatusMessage {
     std::vector<GoalStatusInfo> status_list;
 
-    // Add serialization methods for compatibility
+    static constexpr std::size_t kGoalStatusInfoWireSize =
+        UUID_SIZE + sizeof(int8_t);
+
+    static std::size_t WireSizeForCount(std::size_t count) {
+        return sizeof(uint32_t) + count * kGoalStatusInfoWireSize;
+    }
+
     bool SerializeToString(std::string* output) const {
-        // StatusMessage is mainly for internal use via Channel
-        // Channel messages need serialization, but this is complex
-        // For now, return false to indicate it's not directly serializable
-        (void)output;
-        return false;
+        if (!output) {
+            return false;
+        }
+        if (status_list.size() > UINT32_MAX) {
+            return false;
+        }
+        const uint32_t count = static_cast<uint32_t>(status_list.size());
+        output->resize(WireSizeForCount(count));
+        char* ptr = output->data();
+        std::memcpy(ptr, &count, sizeof(count));
+        ptr += sizeof(count);
+        for (const auto& info : status_list) {
+            std::memcpy(ptr, info.goal_id.data(), UUID_SIZE);
+            ptr += UUID_SIZE;
+            std::memcpy(ptr, &info.status, sizeof(info.status));
+            ptr += sizeof(info.status);
+        }
+        return true;
     }
 
     bool ParseFromString(const std::string& input) {
-        (void)input;
-        return false;
+        status_list.clear();
+        if (input.size() < sizeof(uint32_t)) {
+            return false;
+        }
+        uint32_t count = 0;
+        std::memcpy(&count, input.data(), sizeof(count));
+        const std::size_t expected = WireSizeForCount(count);
+        if (input.size() != expected) {
+            return false;
+        }
+        status_list.reserve(count);
+        const char* ptr = input.data() + sizeof(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            GoalStatusInfo info;
+            std::memcpy(info.goal_id.data(), ptr, UUID_SIZE);
+            ptr += UUID_SIZE;
+            std::memcpy(&info.status, ptr, sizeof(info.status));
+            ptr += sizeof(info.status);
+            status_list.push_back(info);
+        }
+        return true;
+    }
+
+    bool SerializeToArray(void* data, int size) const {
+        if (!data || size <= 0) {
+            return false;
+        }
+        std::string serialized;
+        if (!SerializeToString(&serialized)) {
+            return false;
+        }
+        if (static_cast<int>(serialized.size()) > size) {
+            return false;
+        }
+        std::memcpy(data, serialized.data(), serialized.size());
+        return true;
+    }
+
+    bool ParseFromArray(const void* data, int size) {
+        if (!data || size <= 0) {
+            return false;
+        }
+        std::string input(reinterpret_cast<const char*>(data),
+                          static_cast<std::size_t>(size));
+        return ParseFromString(input);
+    }
+
+    std::size_t ByteSizeLong() const {
+        std::string serialized;
+        if (!SerializeToString(&serialized)) {
+            return 0;
+        }
+        return serialized.size();
+    }
+
+    int ByteSize() const {
+        const std::size_t n = ByteSizeLong();
+        if (n > static_cast<std::size_t>(INT_MAX)) {
+            return INT_MAX;
+        }
+        return static_cast<int>(n);
+    }
+
+    static std::string TypeName() {
+        return "autolink.action.internal.StatusMessage";
     }
 };
 

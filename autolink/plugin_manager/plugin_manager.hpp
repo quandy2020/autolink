@@ -185,7 +185,6 @@ private:
 template <typename Base>
 std::shared_ptr<Base> PluginManager::CreateInstance(
     const std::string& derived_class) {
-    AINFO << "creating plugin instance of " << derived_class;
     if (!CheckAndLoadPluginLibrary<Base>(derived_class)) {
         AERROR << "plugin of class " << derived_class
                << " have not been loaded";

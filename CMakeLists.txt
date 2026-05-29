@@ -106,6 +106,11 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/autolink/proto/
   FILES_MATCHING PATTERN "*.pb.h"
 )
 
+# configure_file 生成的 conf.hpp（environment.hpp 依赖）
+install(FILES ${CMAKE_BINARY_DIR}/autolink/conf/conf.hpp
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/autolink/conf
+)
+
 # config files -> /usr/local/share/autolink/conf/*.conf
 install(DIRECTORY autolink/conf/
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/autolink/conf
