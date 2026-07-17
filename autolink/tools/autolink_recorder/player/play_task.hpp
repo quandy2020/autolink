@@ -33,7 +33,8 @@ public:
     using WriterPtr = std::shared_ptr<Writer<message::RawMessage>>;
 
     PlayTask(const MessagePtr& msg, const WriterPtr& writer,
-             uint64_t msg_real_time_ns, uint64_t msg_play_time_ns);
+             const std::string& channel_name, uint64_t msg_real_time_ns,
+             uint64_t msg_play_time_ns);
     virtual ~PlayTask() {}
 
     void Play();
@@ -51,6 +52,7 @@ public:
 private:
     MessagePtr msg_;
     WriterPtr writer_;
+    std::string channel_name_;
     uint64_t msg_real_time_ns_;
     uint64_t msg_play_time_ns_;
 

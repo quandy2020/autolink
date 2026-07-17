@@ -65,13 +65,18 @@ void InitLogger(const char* binary_name) {
         ::autolink::binary::SetName(binary_name);
     }
 
-    // Init glog
-    google::InitGoogleLogging(binary_name);
-    google::SetLogDestination(google::ERROR, "");
-    google::SetLogDestination(google::WARNING, "");
-    google::SetLogDestination(google::FATAL, "");
+    // Init glog (idempotent: autonomy mains may call InitGoogleLogging before autolink::Init)
+    if (!google::IsGoogleLoggingInitialized()) {
+        google::InitGoogleLogging(binary_name);
+        google::SetLogDestination(google::ERROR, "");
+        google::SetLogDestination(google::WARNING, "");
+        google::SetLogDestination(google::FATAL, "");
+    }
 
     // Init async logger
+    if (async_logger != nullptr) {
+        return;
+    }
     async_logger = new ::autolink::logger::AsyncLogger(
         google::base::GetLogger(FLAGS_minloglevel));
     google::base::SetLogger(FLAGS_minloglevel, async_logger);

@@ -50,6 +50,7 @@ public:
     using WriterPtr = std::shared_ptr<Writer<message::RawMessage>>;
     using WriterMap = std::unordered_map<std::string, WriterPtr>;
     using MessageTypeMap = std::unordered_map<std::string, std::string>;
+    using MessageProtoDescMap = std::unordered_map<std::string, std::string>;
     using RecordViewerPtr = std::shared_ptr<RecordViewer>;
 
     PlayTaskProducer(const TaskBufferPtr& task_buffer,
@@ -105,6 +106,7 @@ private:
     NodePtr node_;
     WriterMap writers_;
     MessageTypeMap msg_types_;
+    MessageProtoDescMap proto_descs_;
     std::vector<RecordReaderPtr> record_readers_;
     RecordViewerPtr record_viewer_ptr_;
 
@@ -120,6 +122,7 @@ private:
     bool preload_fill_buffer_mode_;
 
     static const uint32_t kMinTaskBufferSize;
+    static const uint32_t kMaxTaskBufferSize;
     static const uint32_t kPreloadTimeSec;
     static const uint64_t kSleepIntervalNanoSec;
 };

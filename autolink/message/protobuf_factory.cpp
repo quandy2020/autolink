@@ -80,7 +80,13 @@ bool ProtobufFactory::RegisterPythonMessage(const std::string& proto_str) {
 bool ProtobufFactory::RegisterMessage(const std::string& proto_desc_str) {
     ProtoDesc proto_desc;
     proto_desc.ParseFromString(proto_desc_str);
-    return RegisterMessage(proto_desc);
+    FileDescriptorProto probe;
+    if (!proto_desc.desc().empty() &&
+        probe.ParseFromString(proto_desc.desc()) && !probe.name().empty()) {
+        return RegisterMessage(proto_desc);
+    }
+    // Legacy records store a raw FileDescriptorProto (e.g. Python py_record).
+    return RegisterPythonMessage(proto_desc_str);
 }
 
 // Internal method

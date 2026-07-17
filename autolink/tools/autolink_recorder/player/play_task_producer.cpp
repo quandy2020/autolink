@@ -28,6 +28,7 @@ namespace autolink {
 namespace record {
 
 const uint32_t PlayTaskProducer::kMinTaskBufferSize = 500;
+const uint32_t PlayTaskProducer::kMaxTaskBufferSize = 32;
 const uint32_t PlayTaskProducer::kPreloadTimeSec = 3;
 const uint64_t PlayTaskProducer::kSleepIntervalNanoSec = 1000000;
 const char record_info_channel[] = "/autolink/record_info";
@@ -137,13 +138,14 @@ bool PlayTaskProducer::ReadRecordInfo() {
             auto& msg_type = record_reader->GetMessageType(channel_name);
             msg_types_[channel_name] = msg_type;
 
+            auto& proto_desc = record_reader->GetProtoDesc(channel_name);
+            proto_descs_[channel_name] = proto_desc;
+            pb_factory->RegisterMessage(proto_desc);
+
             if (!play_param_.is_play_all_channels &&
                 play_param_.channels_to_play.count(channel_name) > 0) {
                 total_msg_num_ += record_reader->GetMessageNumber(channel_name);
             }
-
-            auto& proto_desc = record_reader->GetProtoDesc(channel_name);
-            pb_factory->RegisterMessage(proto_desc);
         }
 
         auto& header = record_reader->GetHeader();
@@ -239,6 +241,12 @@ bool PlayTaskProducer::CreatePlayTaskWriter(const std::string& channel_name,
     proto::RoleAttributes attr;
     attr.set_channel_name(channel_name);
     attr.set_message_type(msg_type);
+    auto desc_it = proto_descs_.find(channel_name);
+    if (desc_it != proto_descs_.end()) {
+        attr.set_proto_desc(desc_it->second);
+    }
+    // RawMessage writers must register as RawMessage so they can pair with
+    // typed readers on the same channel during record playback.
     auto writer = node_->CreateWriter<message::RawMessage>(attr);
     if (writer == nullptr) {
         AERROR << "create writer failed. channel name: " << channel_name
@@ -283,6 +291,9 @@ void PlayTaskProducer::FillPlayTaskBuffer() {
     task_buffer_->Clear();
     // use fixed preload buffer size
     uint32_t preload_size = kMinTaskBufferSize * 2;
+    if (preload_size > kMaxTaskBufferSize) {
+        preload_size = kMaxTaskBufferSize;
+    }
 
     if (!record_viewer_ptr_) {
         record_viewer_ptr_ = std::make_shared<RecordViewer>(
@@ -306,7 +317,8 @@ void PlayTaskProducer::FillPlayTaskBuffer() {
 
         auto raw_msg = std::make_shared<message::RawMessage>(itr->content);
         auto task = std::make_shared<PlayTask>(raw_msg, search->second,
-                                               itr->time, itr->time);
+                                               itr->channel_name, itr->time,
+                                               itr->time);
         task_buffer_->Push(task);
     }
 }
@@ -320,6 +332,9 @@ void PlayTaskProducer::ThreadFuncUnderPreloadMode() {
     }
 
     uint32_t preload_size = kMinTaskBufferSize * 2;
+    if (preload_size > kMaxTaskBufferSize) {
+        preload_size = kMaxTaskBufferSize;
+    }
 
     if (preload_fill_buffer_mode_ && !record_viewer_ptr_) {
         AERROR << "Preload should not nullptr";
@@ -358,6 +373,7 @@ void PlayTaskProducer::ThreadFuncUnderPreloadMode() {
                 auto raw_msg =
                     std::make_shared<message::RawMessage>(itr->content);
                 auto task = std::make_shared<PlayTask>(raw_msg, search->second,
+                                                       itr->channel_name,
                                                        itr->time, itr->time);
                 task_buffer_->Push(task);
             }
@@ -378,11 +394,15 @@ void PlayTaskProducer::ThreadFunc() {
 
     double avg_freq_hz = static_cast<double>(total_msg_num_) /
                          (static_cast<double>(loop_time_ns) * 1e-9);
-    uint32_t preload_size = (uint32_t)avg_freq_hz * play_param_.preload_time_s;
-    AINFO << "preload_size: " << preload_size;
-    if (preload_size < kMinTaskBufferSize) {
-        preload_size = kMinTaskBufferSize;
+    uint32_t preload_size =
+        static_cast<uint32_t>(avg_freq_hz * play_param_.preload_time_s);
+    if (preload_size > kMaxTaskBufferSize) {
+        preload_size = kMaxTaskBufferSize;
     }
+    if (preload_size < 1) {
+        preload_size = 1;
+    }
+    AINFO << "preload_size: " << preload_size;
 
     record_viewer_ptr_ = std::make_shared<RecordViewer>(
         record_readers_, play_param_.begin_time_ns, play_param_.end_time_ns,
@@ -413,7 +433,7 @@ void PlayTaskProducer::ThreadFunc() {
                 auto raw_msg =
                     std::make_shared<message::RawMessage>(itr->content);
                 auto task = std::make_shared<PlayTask>(
-                    raw_msg, search->second, itr->time,
+                    raw_msg, search->second, itr->channel_name, itr->time,
                     itr->time + plus_time_ns);
                 task_buffer_->Push(task);
             }

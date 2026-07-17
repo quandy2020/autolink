@@ -141,15 +141,11 @@ void ShmTransmitter<M>::Disable(const RoleAttributes& opposite_attr) {
             } else {
                 arena_receiver_count_.fetch_sub(1);
             }
-            if (serialized_receiver_count_.load() <= 0 &&
-                arena_receiver_count_.load() <= 0) {
-                this->Disable();
-            }
+            // Keep SHM enabled once brought up; see serialized path below.
         } else {
             serialized_receiver_count_.fetch_sub(1);
-            if (serialized_receiver_count_.load() <= 0) {
-                this->Disable();
-            }
+            // Keep SHM enabled once brought up so record playback and other
+            // publishers can continue after subscribers disconnect or join late.
         }
     }
 }

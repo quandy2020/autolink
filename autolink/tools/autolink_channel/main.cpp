@@ -18,7 +18,7 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <csignal>
 #include <iomanip>
@@ -32,9 +32,11 @@
 
 #include "autolink/autolink.hpp"
 #include "autolink/init.hpp"
+#include "autolink/message/message_header.hpp"
 #include "autolink/message/protobuf_factory.hpp"
 #include "autolink/message/raw_message.hpp"
 #include "autolink/proto/role_attributes.pb.h"
+#include "autolink/proto/topology_change.pb.h"
 #include "autolink/service_discovery/specific_manager/channel_manager.hpp"
 #include "autolink/service_discovery/topology_manager.hpp"
 #include "autolink/state.hpp"
@@ -145,18 +147,153 @@ void CmdInfo(const std::string& channel_name, bool all_channels) {
 // -----------------------------------------------------------------------------
 // echo: subscribe and print messages as debug string by msg type
 // -----------------------------------------------------------------------------
+namespace {
+
+constexpr char kRawMessageType[] = "autolink.message.RawMessage";
+
+constexpr char kTwistStampedType[] =
+    "autonomy.commsgs.proto.geometry_msgs.TwistStamped";
+
+const char* KnownAutonomyChannelType(const std::string& channel_name) {
+    if (channel_name == "/cmd_vel") {
+        return kTwistStampedType;
+    }
+    return nullptr;
+}
+
+bool TryResolveChannelEchoSchema(
+    const autolink::service_discovery::ChannelManagerPtr& channel_manager,
+    const std::string& channel_name, std::string* msg_type,
+    std::string* proto_desc) {
+    if (!channel_manager || msg_type == nullptr || proto_desc == nullptr) {
+        return false;
+    }
+    msg_type->clear();
+    proto_desc->clear();
+
+    if (channel_manager->HasWriter(channel_name)) {
+        channel_manager->GetMsgType(channel_name, msg_type);
+        channel_manager->GetProtoDesc(channel_name, proto_desc);
+    }
+
+    if (!msg_type->empty() && *msg_type != kRawMessageType) {
+        if (proto_desc->empty()) {
+            channel_manager->GetProtoDesc(channel_name, proto_desc);
+        }
+        return true;
+    }
+
+    std::vector<autolink::proto::RoleAttributes> writers;
+    channel_manager->GetWritersOfChannel(channel_name, &writers);
+    for (const auto& attr : writers) {
+        if (!attr.message_type().empty() &&
+            attr.message_type() != kRawMessageType) {
+            *msg_type = attr.message_type();
+            if (!attr.proto_desc().empty()) {
+                *proto_desc = attr.proto_desc();
+            }
+            return true;
+        }
+        if (proto_desc->empty() && !attr.proto_desc().empty()) {
+            *proto_desc = attr.proto_desc();
+        }
+    }
+
+    if (msg_type->empty()) {
+        if (const char* known = KnownAutonomyChannelType(channel_name)) {
+            *msg_type = known;
+        }
+    }
+    return !msg_type->empty() && *msg_type != kRawMessageType;
+}
+
+bool ResolveChannelEchoSchema(
+    const autolink::service_discovery::ChannelManagerPtr& channel_manager,
+    const std::string& channel_name, std::string* msg_type,
+    std::string* proto_desc) {
+    for (int retry = 0; retry < 30; ++retry) {
+        if (TryResolveChannelEchoSchema(channel_manager, channel_name, msg_type,
+                                        proto_desc)) {
+            return true;
+        }
+        sleep(1);
+    }
+    return TryResolveChannelEchoSchema(channel_manager, channel_name, msg_type,
+                                       proto_desc);
+}
+
+bool TryExtractHcPayload(const std::string& raw, std::string* type_out,
+                         std::string* payload_out) {
+    using autolink::message::MessageHeader;
+    if (raw.size() < sizeof(MessageHeader)) {
+        return false;
+    }
+    MessageHeader header;
+    std::memcpy(&header, raw.data(), sizeof(MessageHeader));
+    if (!header.is_magic_num_match("BDACBDAC", 8)) {
+        return false;
+    }
+    const uint32_t content_size = header.content_size();
+    const size_t header_size = sizeof(MessageHeader);
+    if (raw.size() < header_size + content_size) {
+        return false;
+    }
+    if (type_out != nullptr) {
+        *type_out = header.msg_type();
+    }
+    if (payload_out != nullptr) {
+        payload_out->assign(raw.data() + header_size, content_size);
+    }
+    return true;
+}
+
+void ApplyEchoSchema(const std::string& msg_type, const std::string& proto_desc,
+                     std::string* schema, std::string* desc) {
+    if (schema == nullptr || desc == nullptr || msg_type.empty()) {
+        return;
+    }
+    *schema = msg_type;
+    if (!proto_desc.empty()) {
+        *desc = proto_desc;
+    } else {
+        autolink::message::ProtobufFactory::Instance()->GetDescriptorString(
+            msg_type, desc);
+    }
+    if (!desc->empty()) {
+        autolink::message::ProtobufFactory::Instance()->RegisterMessage(*desc);
+    }
+}
+
+}  // namespace
+
 std::string GetDebugStringRawMsg(const std::string& msg_type,
-                                 const std::string& rawmsgdata) {
-    if (msg_type.empty() || rawmsgdata.empty()) {
+                                 const std::string& rawmsgdata,
+                                 const std::string& proto_desc) {
+    if (rawmsgdata.empty()) {
+        return "";
+    }
+    std::string type = msg_type;
+    std::string payload = rawmsgdata;
+    if (type.empty()) {
+        TryExtractHcPayload(rawmsgdata, &type, &payload);
+    }
+    if (type.empty() || type == kRawMessageType) {
         return "";
     }
     auto* factory = autolink::message::ProtobufFactory::Instance();
-    google::protobuf::Message* msg = factory->GenerateMessageByType(msg_type);
+    std::string desc = proto_desc;
+    if (desc.empty()) {
+        factory->GetDescriptorString(type, &desc);
+    }
+    if (!desc.empty()) {
+        factory->RegisterMessage(desc);
+    }
+    google::protobuf::Message* msg = factory->GenerateMessageByType(type);
     if (!msg) {
         return "";
     }
     std::string result;
-    if (msg->ParseFromString(rawmsgdata)) {
+    if (msg->ParseFromString(payload)) {
         result = msg->DebugString();
     }
     delete msg;
@@ -169,19 +306,124 @@ void CmdEcho(const std::string& channel_name) {
         std::cerr << "Failed to create node" << std::endl;
         return;
     }
-    std::string msg_type;
+
     auto* topology = autolink::service_discovery::TopologyManager::Instance();
-    sleep(2);
-    topology->channel_manager()->GetMsgType(channel_name, &msg_type);
+    auto& channel_manager = topology->channel_manager();
+
+    std::string msg_type;
+    std::string proto_desc;
+    if (!TryResolveChannelEchoSchema(channel_manager, channel_name, &msg_type,
+                                     &proto_desc)) {
+        for (int retry = 0; retry < 3; ++retry) {
+            sleep(1);
+            if (TryResolveChannelEchoSchema(channel_manager, channel_name,
+                                            &msg_type, &proto_desc)) {
+                break;
+            }
+        }
+    }
+    if (msg_type.empty()) {
+        std::cerr << "warning: no active writer on channel [" << channel_name
+                  << "]; start publisher or playback first" << std::endl;
+    }
+
+    if (!proto_desc.empty()) {
+        autolink::message::ProtobufFactory::Instance()->RegisterMessage(
+            proto_desc);
+    } else if (!msg_type.empty() && msg_type != kRawMessageType) {
+        autolink::message::ProtobufFactory::Instance()->GetDescriptorString(
+            msg_type, &proto_desc);
+        if (!proto_desc.empty()) {
+            autolink::message::ProtobufFactory::Instance()->RegisterMessage(
+                proto_desc);
+        }
+    }
+
+    if (msg_type.empty()) {
+        std::cerr << "warning: message type unknown for channel ["
+                  << channel_name << "]" << std::endl;
+    } else if (msg_type == kRawMessageType) {
+        std::cerr << "warning: writer advertises RawMessage; rebuild and "
+                     "restart autolink_recorder play"
+                  << std::endl;
+    } else {
+        std::cout << "message type: " << msg_type << std::endl;
+    }
+
+    auto schema = std::make_shared<std::string>(msg_type);
+    auto desc = std::make_shared<std::string>(proto_desc);
+    auto warned = std::make_shared<bool>(false);
+    auto channel_manager_ptr = channel_manager;
+    if (schema->empty()) {
+        std::string mt;
+        std::string pd;
+        if (TryResolveChannelEchoSchema(channel_manager_ptr, channel_name, &mt,
+                                        &pd)) {
+            ApplyEchoSchema(mt, pd, schema.get(), desc.get());
+        }
+    }
+
+    auto change_conn = topology->AddChangeListener(
+        [schema, desc, warned, channel_manager_ptr, channel_name](
+            const autolink::proto::ChangeMsg& change) {
+            if (change.role_type() != autolink::proto::ROLE_WRITER) {
+                return;
+            }
+            if (change.role_attr().channel_name() != channel_name) {
+                return;
+            }
+            std::string mt;
+            std::string pd;
+            if (!TryResolveChannelEchoSchema(channel_manager_ptr, channel_name,
+                                             &mt, &pd)) {
+                return;
+            }
+            ApplyEchoSchema(mt, pd, schema.get(), desc.get());
+            *warned = false;
+            if (!mt.empty()) {
+                std::cout << "message type: " << mt << std::endl;
+            }
+        });
 
     auto callback =
-        [channel_name,
-         msg_type](const std::shared_ptr<const autolink::message::RawMessage>&
-                       raw_msg) {
+        [schema, desc, warned, channel_manager_ptr, channel_name](
+            const std::shared_ptr<const autolink::message::RawMessage>&
+                raw_msg) {
             std::string data = raw_msg ? raw_msg->message : "";
-            std::string debug = GetDebugStringRawMsg(msg_type, data);
+            if (data.empty()) {
+                return;
+            }
+            if (schema->empty()) {
+                std::string mt;
+                std::string pd;
+                if (TryResolveChannelEchoSchema(channel_manager_ptr,
+                                                channel_name, &mt, &pd)) {
+                    ApplyEchoSchema(mt, pd, schema.get(), desc.get());
+                    std::cout << "message type: " << mt << std::endl;
+                    *warned = false;
+                }
+            }
+            std::string debug = GetDebugStringRawMsg(*schema, data, *desc);
             if (!debug.empty()) {
                 std::cout << debug << std::endl;
+                return;
+            }
+            if (*warned) {
+                return;
+            }
+            *warned = true;
+            if (schema->empty() || *schema == kRawMessageType) {
+                std::cerr << "warning: received " << data.size()
+                          << " bytes but message type is not available"
+                          << std::endl;
+            } else if (!desc->empty()) {
+                std::cerr << "warning: received " << data.size()
+                          << " bytes but failed to parse [" << *schema << "]"
+                          << std::endl;
+            } else {
+                std::cerr << "warning: received " << data.size()
+                          << " bytes but proto_desc is missing (type ["
+                          << *schema << "])" << std::endl;
             }
         };
 
@@ -196,6 +438,7 @@ void CmdEcho(const std::string& channel_name) {
     while (!autolink::IsShutdown()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+    topology->RemoveChangeListener(change_conn);
 }
 
 // -----------------------------------------------------------------------------
@@ -424,6 +667,9 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, [](int sig) { autolink::OnShutdown(sig); });
     std::signal(SIGTERM, [](int sig) { autolink::OnShutdown(sig); });
 
+    FLAGS_minloglevel = 3;
+    FLAGS_alsologtostderr = 0;
+    FLAGS_colorlogtostderr = 0;
     autolink::Init(argv[0]);
 
     int ret = 0;
