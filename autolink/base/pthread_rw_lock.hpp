@@ -32,8 +32,12 @@ public:
     explicit PthreadRWLock(bool writer) {
         pthread_rwlockattr_init(&rwlock_attr_);
         if (writer) {
+#if defined(__linux__)
             pthread_rwlockattr_setkind_np(
                 &rwlock_attr_, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+#else
+            (void)writer;
+#endif
         }
         pthread_rwlockattr_setpshared(&rwlock_attr_, PTHREAD_PROCESS_SHARED);
         pthread_rwlock_init(&rwlock_, &rwlock_attr_);

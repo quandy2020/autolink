@@ -43,7 +43,7 @@ protected:
         param.SerializeToString(&str);
         std::string desc;
         message::GetDescriptorString(param, &desc);
-        std::string full_name = proto::Param::descriptor()->full_name();
+        std::string full_name = std::string(proto::Param::descriptor()->full_name());
         protobuf_param_.reset(new Parameter("protobuf", str, full_name, desc));
     }
 

@@ -21,6 +21,7 @@
 #include <mutex>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "autolink/common/macros.hpp"
 #include "autolink/proto/proto_desc.pb.h"
 #include "google/protobuf/compiler/parser.h"
@@ -44,15 +45,17 @@ class ErrorCollector : public google::protobuf::DescriptorPool::ErrorCollector
         google::protobuf::DescriptorPool::ErrorCollector::ErrorLocation;
 
 public:
-    void AddError(const std::string& filename, const std::string& element_name,
-                  const google::protobuf::Message* descriptor,
-                  ErrorLocation location, const std::string& message) override;
+    void RecordError(absl::string_view filename,
+                     absl::string_view element_name,
+                     const google::protobuf::Message* descriptor,
+                     ErrorLocation location,
+                     absl::string_view message) override;
 
-    void AddWarning(const std::string& filename,
-                    const std::string& element_name,
-                    const google::protobuf::Message* descriptor,
-                    ErrorLocation location,
-                    const std::string& message) override;
+    void RecordWarning(absl::string_view filename,
+                       absl::string_view element_name,
+                       const google::protobuf::Message* descriptor,
+                       ErrorLocation location,
+                       absl::string_view message) override;
 };
 
 class ProtobufFactory

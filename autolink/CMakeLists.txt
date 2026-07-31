@@ -118,14 +118,25 @@ target_include_directories(autolink PUBLIC
     ${Protobuf_INCLUDE_DIRS}
 )
 
+# Module-mode FindProtobuf often omits abseil; pkg-config pulls transitive deps.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PROTOBUF_PC REQUIRED protobuf)
+
 target_link_libraries(autolink PUBLIC
     ${Protobuf_LIBRARIES}
+    ${PROTOBUF_PC_LDFLAGS}
     ${GLOG_LIBRARIES}
     ${RT_LIB}
     TinyXML2::TinyXML2
 )
+target_include_directories(autolink PUBLIC ${PROTOBUF_PC_INCLUDE_DIRS})
+target_link_directories(autolink PUBLIC ${PROTOBUF_PC_LIBRARY_DIRS})
 
-if(UNIX AND NOT APPLE)
+if(APPLE)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(EPOLL_SHIM REQUIRED IMPORTED_TARGET epoll-shim)
+  target_link_libraries(autolink PUBLIC PkgConfig::EPOLL_SHIM)
+elseif(UNIX)
   target_link_libraries(autolink PUBLIC atomic)
 endif()
 

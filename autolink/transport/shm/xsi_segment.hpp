@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <sys/types.h>
+
 #include "autolink/transport/shm/segment.hpp"
 
 namespace autolink {

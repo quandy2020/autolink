@@ -157,7 +157,7 @@ inline bool ArenaQueue<T>::Init(uint64_t size, google::protobuf::Arena* arena) {
     }
     pool_.clear();
     for (uint64_t i = 0; i < pool_size_; ++i) {
-        pool_.push_back(google::protobuf::Arena::CreateMessage<T>(arena));
+        pool_.push_back(google::protobuf::Arena::Create<T>(arena));
     }
     arena_ = true;
     return true;

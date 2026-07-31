@@ -76,6 +76,7 @@ bool Scheduler::NotifyTask(uint64_t crid) {
 }
 
 void Scheduler::ProcessLevelResourceControl() {
+#if defined(__linux__)
     std::vector<int> cpus;
     ParseCpuset(process_level_cpuset_, &cpus);
     cpu_set_t set;
@@ -84,6 +85,9 @@ void Scheduler::ProcessLevelResourceControl() {
         CPU_SET(cpu, &set);
     }
     pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+#else
+    (void)process_level_cpuset_;
+#endif
 }
 
 void Scheduler::SetInnerThreadAttr(const std::string& name, std::thread* thr) {

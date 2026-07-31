@@ -16,11 +16,16 @@
 
 #include "autolink/scheduler/processor.hpp"
 
+#include <pthread.h>
+#if defined(__linux__)
 #include <sched.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 #include <chrono>
+#include <thread>
 
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
@@ -32,6 +37,23 @@ namespace scheduler {
 
 using autolink::common::GlobalData;
 
+namespace {
+
+int CurrentThreadId() {
+#if defined(__linux__)
+    return static_cast<int>(syscall(SYS_gettid));
+#elif defined(__APPLE__)
+    uint64_t tid = 0;
+    pthread_threadid_np(nullptr, &tid);
+    return static_cast<int>(tid);
+#else
+    return static_cast<int>(
+        std::hash<std::thread::id>{}(std::this_thread::get_id()) & 0x7fffffff);
+#endif
+}
+
+}  // namespace
+
 Processor::Processor() {
     running_.store(true);
 }
@@ -41,7 +63,7 @@ Processor::~Processor() {
 }
 
 void Processor::Run() {
-    tid_.store(static_cast<int>(syscall(SYS_gettid)));
+    tid_.store(CurrentThreadId());
     AINFO << "processor_tid: " << tid_;
     snap_shot_->processor_id.store(tid_);
 

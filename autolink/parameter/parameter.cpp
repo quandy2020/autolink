@@ -104,7 +104,7 @@ Parameter::Parameter(const std::string& name,
     ProtobufFactory::GetDescriptorString(msg, &desc);
     param_.set_string_value(str);
     param_.set_type(ParamType::PROTOBUF);
-    param_.set_type_name(msg.GetDescriptor()->full_name());
+    param_.set_type_name(std::string(msg.GetDescriptor()->full_name()));
     param_.set_proto_desc(desc);
 }
 

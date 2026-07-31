@@ -15,6 +15,7 @@
 find_package(Eigen3 QUIET NO_MODULE)
 if (NOT EIGEN3_FOUND)
   list(APPEND EIGEN3_POSSIBLE_DIRS
+    /opt/homebrew/include/eigen3
     /usr/local/include/eigen3
     /usr/include/eigen3
   )

@@ -360,7 +360,7 @@ template <
     typename T, typename Descriptor,
     typename std::enable_if<HasFullName<Descriptor>::value, bool>::type = 0>
 std::string GetFullName() {
-    return T::descriptor()->full_name();
+    return std::string(T::descriptor()->full_name());
 }
 
 template <
@@ -385,7 +385,7 @@ template <typename T,
                   std::is_base_of<google::protobuf::Message, T>::value,
               bool>::type = 0>
 std::string GetMessageName() {
-    return T::descriptor()->full_name();
+    return std::string(T::descriptor()->full_name());
 }
 
 template <typename T,

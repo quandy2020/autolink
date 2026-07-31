@@ -271,7 +271,7 @@ public:
         // deconstructor do nothing to avoid proto
         // instance deconstructed before arena allocator
         ret_msg = std::shared_ptr<M>(
-            google::protobuf::Arena::CreateMessage<M>(
+            google::protobuf::Arena::Create<M>(
                 segment->arenas_[wb.block_index_].get()),
             [segment, wb](M* ptr) {
                 int32_t lock_num =

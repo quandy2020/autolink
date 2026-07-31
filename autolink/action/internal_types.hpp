@@ -410,7 +410,7 @@ public:
 
     // Add TypeName and GetDescriptorString for Autolink message registration
     static std::string TypeName() {
-        return proto::FeedbackMessage::descriptor()->full_name();
+        return std::string(proto::FeedbackMessage::descriptor()->full_name());
     }
 
     static void GetDescriptorString(const std::string& type,
@@ -419,7 +419,8 @@ public:
             return;
         // Use ProtobufFactory to get descriptor string, similar to RawMessage
         message::ProtobufFactory::Instance()->GetDescriptorString(
-            proto::FeedbackMessage::descriptor()->full_name(), desc_str);
+            std::string(proto::FeedbackMessage::descriptor()->full_name()),
+            desc_str);
     }
 };
 

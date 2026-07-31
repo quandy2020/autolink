@@ -15,13 +15,21 @@
 # Locate the GLOG library
 find_path(GLOG_INCLUDE_DIR
   NAMES glog/logging.h
-  PATHS /usr/local/include
+  PATHS
+    $ENV{HOME}/.local/include
+    /opt/homebrew/include
+    /usr/local/include
+    /usr/include
 )
 
 find_library(GLOG_LIBRARY
   NAMES glog
-  PATHS /usr/local/lib
-        /usr/local/lib64
+  PATHS
+    $ENV{HOME}/.local/lib
+    /opt/homebrew/lib
+    /usr/local/lib
+    /usr/local/lib64
+    /usr/lib
 )
 
 # Set the results

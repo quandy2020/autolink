@@ -51,6 +51,7 @@ void ParseCpuset(const std::string& str, std::vector<int>* cpuset) {
 
 void SetSchedAffinity(std::thread* thread, const std::vector<int>& cpus,
                       const std::string& affinity, int cpu_id) {
+#if defined(__linux__)
     cpu_set_t set;
     CPU_ZERO(&set);
 
@@ -70,6 +71,12 @@ void SetSchedAffinity(std::thread* thread, const std::vector<int>& cpus,
             AINFO << "thread " << thread->get_id() << " set 1to1 affinity";
         }
     }
+#else
+    (void)thread;
+    (void)cpus;
+    (void)affinity;
+    (void)cpu_id;
+#endif
 }
 
 void SetSchedPolicy(std::thread* thread, std::string spolicy,

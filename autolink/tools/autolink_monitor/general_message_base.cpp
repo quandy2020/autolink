@@ -152,7 +152,7 @@ void GeneralMessageBase::PrintMessage(GeneralMessageBase* baseMsg,
                 --(*jump_lines);
             } else {
                 std::ostringstream out_str;
-                const std::string& fieldName = field->name();
+                const std::string fieldName(field->name());
                 out_str << fieldName << ": ";
                 out_str << "+[" << reflection->FieldSize(msg, field)
                         << " items]";
@@ -195,7 +195,7 @@ void GeneralMessageBase::PrintField(
         if (*jump_lines) {                                                \
             --(*jump_lines);                                              \
         } else {                                                          \
-            const std::string& fieldName = field->name();                 \
+            const std::string fieldName(field->name());                   \
             out_str << fieldName << ": ";                                 \
             if (field->is_repeated()) {                                   \
                 out_str << "[" << index << "] ";                          \
@@ -247,7 +247,7 @@ void GeneralMessageBase::PrintField(
                     line_width = 0;
                     unsigned line_count = 1;
 
-                    const std::string& fieldName = field->name();
+                    const std::string fieldName(field->name());
                     out_str << fieldName << ": ";
                     if (field->is_repeated()) {
                         out_str << "[" << index << "] ";
@@ -281,7 +281,7 @@ void GeneralMessageBase::PrintField(
             if (*jump_lines) {
                 --(*jump_lines);
             } else {
-                const std::string& fieldName = field->name();
+                const std::string fieldName(field->name());
                 out_str << fieldName << ": ";
                 if (field->is_repeated()) {
                     out_str << "[" << index << "] ";
@@ -304,7 +304,7 @@ void GeneralMessageBase::PrintField(
 
         case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
             if (!*jump_lines) {
-                const std::string& fieldName = field->name();
+                const std::string fieldName(field->name());
                 out_str << fieldName;
                 if (!field->is_map()) {
                     out_str << ": ";

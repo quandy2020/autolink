@@ -16,10 +16,37 @@
 
 #include "autolink/io/session.hpp"
 
+#include <cerrno>
+#include <fcntl.h>
+
 #include "autolink/common/log.hpp"
 
 namespace autolink {
 namespace io {
+namespace {
+
+int SetNonBlocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+        return -1;
+    }
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+int AcceptNonBlocking(int fd, struct sockaddr* addr, socklen_t* addrlen) {
+#if defined(__linux__)
+    return accept4(fd, addr, addrlen, SOCK_NONBLOCK);
+#else
+    int sock_fd = accept(fd, addr, addrlen);
+    if (sock_fd >= 0 && SetNonBlocking(sock_fd) != 0) {
+        close(sock_fd);
+        return -1;
+    }
+    return sock_fd;
+#endif
+}
+
+}  // namespace
 
 Session::Session() : Session(-1) {}
 
@@ -32,7 +59,15 @@ int Session::Socket(int domain, int type, int protocol) {
         AINFO << "session has hold a valid fd[" << fd_ << "]";
         return -1;
     }
+#if defined(__linux__)
     int sock_fd = socket(domain, type | SOCK_NONBLOCK, protocol);
+#else
+    int sock_fd = socket(domain, type, protocol);
+    if (sock_fd != -1 && SetNonBlocking(sock_fd) != 0) {
+        close(sock_fd);
+        sock_fd = -1;
+    }
+#endif
     if (sock_fd != -1) {
         set_fd(sock_fd);
     }
@@ -53,10 +88,10 @@ int Session::Bind(const struct sockaddr* addr, socklen_t addrlen) {
 auto Session::Accept(struct sockaddr* addr, socklen_t* addrlen) -> SessionPtr {
     ACHECK(fd_ != -1);
 
-    int sock_fd = accept4(fd_, addr, addrlen, SOCK_NONBLOCK);
+    int sock_fd = AcceptNonBlocking(fd_, addr, addrlen);
     while (sock_fd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         poll_handler_->Block(-1, true);
-        sock_fd = accept4(fd_, addr, addrlen, SOCK_NONBLOCK);
+        sock_fd = AcceptNonBlocking(fd_, addr, addrlen);
     }
 
     if (sock_fd == -1) {
