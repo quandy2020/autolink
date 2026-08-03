@@ -43,9 +43,9 @@ add_executable(autolink_cli
 )
 set_target_properties(autolink_cli PROPERTIES OUTPUT_NAME autolink)
 
-target_include_directories(autolink_cli PRIVATE BEFORE
-  ${CMAKE_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/thirdparty/CLI11/include
+target_include_directories(autolink_cli BEFORE PRIVATE
+  ${AUTOLINK_ROOT_DIR}
+  ${AUTOLINK_ROOT_DIR}/thirdparty/CLI11/include
 )
 
 target_link_libraries(autolink_cli PRIVATE autolink)
