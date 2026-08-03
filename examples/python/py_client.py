@@ -1,35 +1,26 @@
 #!/usr/bin/env python3
+"""Client example (protobuf ChatterBenchmark)."""
 
-###############################################################################
-# Copyright 2024 The OpenRobotic Beginner Authors (duyongquan). All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-###############################################################################
-# -*- coding: utf-8 -*-
-"""Module for example of listener."""
-
+import sys
 import time
 
-from autolink_py3 import autolink
+from _bootstrap_autolink import setup_autolink_pythonpath
+
+setup_autolink_pythonpath()
+
+try:
+    import google.protobuf  # noqa: F401
+except ImportError:
+    sys.exit("pip install -r autolink/python/requirements.txt")
+
+import autolink
 from autolink.proto.unit_test_pb2 import ChatterBenchmark
 
 
 def test_client_class():
-    """
-    Client send request
-    """
     node = autolink.Node("client_node")
-    client = node.create_client("server_01", ChatterBenchmark, ChatterBenchmark)
+    client = node.create_client("server_01", req_type=ChatterBenchmark,
+                                res_type=ChatterBenchmark)
     req = ChatterBenchmark()
     req.content = "clt:Hello service!"
     req.seq = 0
@@ -43,7 +34,7 @@ def test_client_class():
         print("get Response [ ", response, " ]")
 
 
-if __name__ == '__main__':
-    autolink.init()
+if __name__ == "__main__":
+    autolink.init("client_sample")
     test_client_class()
     autolink.shutdown()

@@ -248,6 +248,31 @@ void Server<ActionT>::HandleSendGoal(
     ADEBUG << "Server::HandleSendGoal: received goal request for goal ID: "
            << ToString(goal_id);
 
+    // Deduplicate: transport may deliver the same SendGoal request more than
+    // once (e.g. same-process client/server). Do not re-accept or re-run
+    // handle_accepted_ for an already-known goal UUID.
+    {
+        std::lock_guard<std::mutex> lock(results_mutex_);
+        if (results_.count(goal_id) > 0) {
+            response->accepted = true;
+            response->stamp = Time::Now().ToNanosecond();
+            ADEBUG << "HandleSendGoal: duplicate for completed goal ID: "
+                   << ToString(goal_id);
+            return;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(goal_handles_mutex_);
+        auto it = goal_handles_.find(goal_id);
+        if (it != goal_handles_.end() && it->second.lock()) {
+            response->accepted = true;
+            response->stamp = Time::Now().ToNanosecond();
+            ADEBUG << "HandleSendGoal: duplicate for active goal ID: "
+                   << ToString(goal_id);
+            return;
+        }
+    }
+
     auto goal = std::make_shared<const Goal>(request->goal);
 
     // Call user's goal callback

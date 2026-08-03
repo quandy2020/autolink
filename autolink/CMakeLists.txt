@@ -103,6 +103,16 @@ list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/integration_test/.*")
 add_library(autolink SHARED ${AUTOLINK_CORE_SOURCES} ${AUTOLINK_PROTO_SRCS})
 add_dependencies(autolink autolink_protos)
 
+if(AUTOLINK_BUILD_PYTHON)
+  # Channel Writer/Reader templates must live in libautolink, not in the
+  # pybind11 module (duplicate template statics across .so caused Init segfault).
+  target_sources(autolink PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/channel_bridge.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/parameter_bridge.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/utils_bridge.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/action_bridge.cpp")
+endif()
+
 # Compile defs for vendor backends (stubs always compiled for non-enabled vendors).
 if(AUTOLINK_ENABLE_FASTDDS)
   target_compile_definitions(autolink PUBLIC AUTOLINK_ENABLE_FASTDDS=1)

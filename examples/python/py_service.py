@@ -1,28 +1,18 @@
 #!/usr/bin/env python3
+"""Service example (protobuf ChatterBenchmark)."""
 
-###############################################################################
-# Copyright 2024 The OpenRobotic Beginner Authors (duyongquan). All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-###############################################################################
-# -*- coding: utf-8 -*-
-"""Module for example of listener."""
+import sys
 
 from _bootstrap_autolink import setup_autolink_pythonpath
 
 setup_autolink_pythonpath()
 
-from autolink_py3 import autolink
+try:
+    import google.protobuf  # noqa: F401
+except ImportError:
+    sys.exit("pip install -r autolink/python/requirements.txt")
+
+import autolink
 from autolink.proto.unit_test_pb2 import ChatterBenchmark
 
 
@@ -33,17 +23,14 @@ def callback(data):
 
 
 def test_service_class():
-    """
-    Reader message.
-    """
     print("=" * 120)
     node = autolink.Node("service_node")
-    r = node.create_service(
-        "server_01", ChatterBenchmark, ChatterBenchmark, callback)
+    node.create_service("server_01", callback, req_type=ChatterBenchmark,
+                        res_type=ChatterBenchmark)
     node.spin()
 
 
-if __name__ == '__main__':
-    autolink.init()
+if __name__ == "__main__":
+    autolink.init("service_sample")
     test_service_class()
     autolink.shutdown()

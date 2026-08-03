@@ -11,7 +11,7 @@ Autolink is a local-first communication framework focused on controllable deploy
   `AUTOLINK_DOMAIN_ID`、`AUTOLINK_IP`）。
 - 支持外部 `libamw_*.so` 插件 ABI（`AUTOLINK_AMW_PLUGIN_PATH`）；OpenDDS/Connext 可外挂。
 - 同机 DIFF_HOST 模拟：`scripts/amw_sim_{dual_host,service,action,param}.sh`。
-- 详见 `docs/source/autolink_amw_cn.md`、`docs/source/autolink_amw_dual_host_cn.md`。
+- 详见 `docs/source/amw/overview.md`。
 
 ## Core Features
 
@@ -80,7 +80,7 @@ sudo cmake --install build
 ./scripts/amw_sim_dual_host.sh amw_cyclonedds 0 10
 ```
 
-更多环境变量与双机步骤见 `docs/source/autolink_amw_cn.md`。
+更多环境变量与双机步骤见 `docs/source/amw/overview.md`。
 
 ## Quick Start
 
@@ -128,7 +128,7 @@ Two processes:
 For detailed POD steps, see:
 
 - `examples/cpp/README.md`
-- `docs/source/autolink_pod_message_cn.md`
+- `docs/source/guide/pod_message.md`
 
 ## CMake Package Integration
 
@@ -143,15 +143,29 @@ In-tree reference demo:
 
 ## Tools
 
-When `AUTOLINK_BUILD_TOOLS=ON`, the following tool groups are built from `autolink/tools/`:
+When `AUTOLINK_BUILD_TOOLS=ON`, a unified CLI is built from `autolink/tools/`:
 
-- `autolink_channel`
-- `autolink_node`
-- `autolink_service`
-- `autolink_action`
-- `autolink_monitor`
-- `autolink_recorder`
-- `autolink_launch`
+- `autolink channel` / `node` / `service` / `action` / `param` / `recorder` / `launch` / `monitor` / `doctor` / `completion`
+
+Examples:
+
+```bash
+autolink --wait 3 channel list -v
+autolink channel pub /chatter '{"content":"hi"}' --type autolink.proto.Chatter
+autolink channel echo /chatter --once
+autolink service call /add_two_ints '{"a":1,"b":2}' --type ...
+autolink param list <node>
+autolink launch list
+autolink doctor
+eval "$(autolink completion bash)"   # or: source scripts/completion/autolink.bash
+autolink recorder play -f demo.record
+```
+
+CLI e2e smoke（需已编译 examples）:
+
+```bash
+./scripts/cli_e2e_smoke.sh build
+```
 
 ## Documentation
 

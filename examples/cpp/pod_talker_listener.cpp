@@ -28,7 +28,7 @@
  * 3) 使用 CreateWriter<PodPacket>/CreateReader<PodPacket> 在同一 channel 通信。
  * 4) 发送前填充 POD 字段，调用 writer->Write(msg)。
  *
- * 参考文档: docs/source/autolink_pod_message_cn.md
+ * 参考文档: docs/source/guide/pod_message.md
  *****************************************************************************/
 
 #include <string>

@@ -1,77 +1,41 @@
 #!/usr/bin/env python3
-
-###############################################################################
-# Copyright 2024 The OpenRobotic Beginner Authors (duyongquan). All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-###############################################################################
-# -*- coding: utf-8 -*-
 """Module for example of autolink time."""
 
 import time
 
-from autolink_py3 import autolink_time
+from _bootstrap_autolink import setup_autolink_pythonpath
+
+setup_autolink_pythonpath()
+
+import autolink
 
 
 def test_time():
-    ct = autolink_time.Time(123)
+    ct = autolink.Time(123)
     print(ct.to_nsec())
-    ftime = ct.now().to_sec()
-    print(ftime)
+    print(ct.now().to_sec())
     time.sleep(1)
-    ftime = autolink_time.Time.now().to_sec()
-    print(ftime)
-    ftime = autolink_time.Time.mono_time().to_sec()
-    print(ftime)
-
-    td1 = autolink_time.Duration(111)
-    tm1 = ct - td1
-    print("ct sub du is ", tm1)
-    tm1 = ct - td1
-    print(tm1)
-
-    tm5 = autolink_time.Time(1.8)
-    tm7 = autolink_time.Time(tm5)
-    print(tm7)
+    print(autolink.Time.now().to_sec())
+    print(autolink.Time.mono_time().to_sec())
 
 
 def test_duration():
-    td1 = autolink_time.Duration(111)
-    td2 = autolink_time.Duration(601000000000)
-    td3 = td2 - td1
+    td1 = autolink.Duration(111)
+    td2 = autolink.Duration(601000000000)
     print(td1, td1.to_nsec())
     print(td2, td2.to_nsec())
-    print(td3, td3.to_nsec())
     print(td2.to_sec())
-    print(td2.iszero())
-    print(str(td2))
-    td5 = autolink_time.Duration(1.8)
-    td6 = td5
-    print(type(td6))
-    td7 = autolink_time.Duration(td6)
-    print(td7)
+    print(td2.is_zero())
 
 
 def test_rate():
-    rt1 = autolink_time.Rate(111)
-    rt2 = autolink_time.Rate(0.2)
-    rt3 = autolink_time.Rate(autolink_time.Duration(666))
+    rt1 = autolink.Rate(111.0)
+    rt2 = autolink.Rate(0.2)
     print(rt1)
     print(rt2)
-    print(rt3)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("test time", "-" * 50)
     test_time()
     print("test duration", "-" * 50)

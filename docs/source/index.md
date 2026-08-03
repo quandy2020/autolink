@@ -1,14 +1,26 @@
 # Autolink 文档
 
-欢迎使用 Autolink 文档站。从左侧导航或下方链接进入各章节。
+本地优先的通信框架：同进程 INTRA、同机 SHM、跨机 DDS（Fast DDS / Cyclone DDS）。
 
-- [快速开始](autolink_quick_start_cn.md)
-- [POD 消息指南](autolink_pod_message_cn.md)
-- [术语](autolink_terms.md)
-- [调度器](autolink_scheduler_cn.md)
-- [开发者 API](autolink_api_for_developers.md)
-- [Python API](autolink_python_api_cn.md)
-- [开发者工具](autolink_developer_tools.md)
-- [AMW 中间件框架](autolink_amw_cn.md)
-- [AMW 双机联调](autolink_amw_dual_host_cn.md)
-- [常见问题](autolink_faqs.md)
+## 阅读路径
+
+1. [快速开始](guide/quickstart.md) — 环境、构建、Pub/Sub / Service / Action / Param / Record / Component  
+2. [术语](guide/terms.md) — Node / Channel / HYBRID 等  
+3. [C++ API](api/cpp.md) / [Python API](api/python.md) — 可复制接口写法  
+4. [AMW](amw/overview.md) — 跨机中间件、双机与同机 DIFF_HOST  
+5. [CLI](tools/cli.md) — `autolink` 全部子命令  
+
+专题：[POD 消息](guide/pod_message.md) · [调度器](guide/scheduler.md) · [FAQ](faq.md)
+
+## 常用命令速记
+
+```bash
+export AUTOLINK_PATH=$PWD/autolink
+export LD_LIBRARY_PATH=$PWD/build/lib:$LD_LIBRARY_PATH
+export PATH=$PWD/build/bin:$PATH
+
+./build/bin/examples/autolink_example_listener
+./build/bin/examples/autolink_example_talker
+autolink doctor
+./scripts/cli_e2e_smoke.sh build
+```

@@ -1,23 +1,27 @@
 # Autolink Python Examples
 
-This directory contains runnable Python examples for Autolink.
+本目录示例基于 **pybind11** 绑定：`import autolink`（包位于 `build/python` 或 install 的 `python/`）。
 
 ## Prerequisites
 
-- Build and install Autolink Python wrappers (`AUTOLINK_BUILD_PYTHON=ON`).
-- Export runtime paths (or source your setup script):
-
 ```bash
-export AUTOLINK_DISTRIBUTION_HOME=/usr/local
-export AUTOLINK_PATH=/usr/local/share/autolink
-export PYTHONPATH=/usr/local/python:/usr/local/lib/autolink/python/internal:${PYTHONPATH}
+# 构建（容器 SpaceHero 示例）
+cmake -S . -B build -DAUTOLINK_BUILD_PYTHON=ON
+cmake --build build -j1 --target autolink _core autolink_python_pb2
+pip3 install -r autolink/python/requirements.txt
+
+export PYTHONPATH=$PWD/build/python
+# CycloneDDS 若来自 ROS Humble，需优先其 iceoryx：
+export LD_LIBRARY_PATH=/opt/ros/humble/lib/x86_64-linux-gnu:$PWD/build/lib:$LD_LIBRARY_PATH
+# 若使用 install 前缀：
+# source <prefix>/bin/setup_autolink_python.sh
 ```
 
-For source-tree runs, adjust paths to your build/install prefix.
+`examples/python/_bootstrap_autolink.py` 会尽量自动把 `build/python` 加入 `sys.path`。
 
 ## Run Examples
 
-### Pub/Sub
+### Pub/Sub（protobuf `Chatter`）
 
 ```bash
 # terminal 1
@@ -27,7 +31,7 @@ python3 py_listener.py
 python3 py_talker.py
 ```
 
-### Service/Client
+### Service/Client（protobuf `ChatterBenchmark`）
 
 ```bash
 # terminal 1
@@ -36,6 +40,18 @@ python3 py_service.py
 # terminal 2
 python3 py_client.py
 ```
+
+### Action（protobuf `SimpleMessageAction`，对齐 C++ action_listener/talker）
+
+```bash
+# terminal 1
+python3 py_action_server.py
+
+# terminal 2
+python3 py_action_client.py
+```
+
+可与 C++ `action_listener` / `action_talker` 互通（同 action 名 `examples/simple_message_action`）。
 
 ### Parameter
 
@@ -54,11 +70,11 @@ python3 py_timer.py
 
 ```bash
 python3 py_record.py
-python3 py_record_channel_info.py <record_file>
-python3 py_record_trans.py <record_file>
+python3 py_record_channel_info.py /tmp/test_writer.record
+python3 py_record_trans.py /tmp/test_writer.record
 ```
 
 ## Notes
 
-- `py_action_client.py` and `py_action_server.py` are placeholders and not implemented yet.
-- If discovery fails across hosts/containers, ensure `AUTOLINK_DOMAIN_ID` and network settings are aligned.
+- protobuf 依赖：`pip install -r autolink/python/requirements.txt`；`*_pb2.py` 由 CMake 目标 `autolink_python_pb2` 生成到 `build/python/`。
+- 跨机/容器 discovery 需对齐 `AUTOLINK_DOMAIN_ID` 与网络配置。
