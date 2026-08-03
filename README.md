@@ -1,190 +1,94 @@
-# autolink
+# Autolink
 
-Autolink is a local-first communication framework focused on controllable deployment and low-latency runtime messaging.
+本地优先的通信框架：同进程 INTRA、同机 SHM、跨机 DDS（Fast DDS / Cyclone DDS）。
+提供 Pub/Sub、Service、Action、Parameter、录回放，以及统一 CLI 与 C++/Python API。
 
-## Project Status
+## 构建
 
-- Local: **INTRA + SHM**；跨机：**Fast DDS** / **Cyclone DDS**
-  （`-DAUTOLINK_ENABLE_FASTDDS=ON` / `-DAUTOLINK_ENABLE_CYCLONEDDS=ON`）。
-- Writer/Reader/**Service/Client**/Action/Parameter 均默认 **HYBRID**，选型对齐 ROS 2
- （`RMW_IMPLEMENTATION` / `AUTOLINK_AMW_IMPLEMENTATION`、`ROS_DOMAIN_ID` /
-  `AUTOLINK_DOMAIN_ID`、`AUTOLINK_IP`）。
-- 支持外部 `libamw_*.so` 插件 ABI（`AUTOLINK_AMW_PLUGIN_PATH`）；OpenDDS/Connext 可外挂。
-- 同机 DIFF_HOST 模拟：`scripts/amw_sim_{dual_host,service,action,param}.sh`。
-- 详见 `docs/source/amw/overview.md`。
-
-## Core Features
-
-- Publish/subscribe
-- Service/client
-- Action (goal/feedback/result)
-- Data recording/playback
-- CLI tools: channel/node/service/action/monitor/launch/recorder
-- C++ and Python support
-- Plugin/component support
-
-## Repository Layout
-
-- `autolink/`: core framework source
-- `examples/`: runnable demos
-- `docs/`: MkDocs documentation source
-- `scripts/`: setup and maintenance scripts
-- `docker/`: image build/run scripts
-
-## Build Options
-
-The top-level CMake options:
-
-- `AUTOLINK_BUILD_TOOLS` (default `ON`)
-- `AUTOLINK_BUILD_TEST` (default `ON`)
-- `AUTOLINK_BUILD_EXAMPLES` (default `ON`)
-- `AUTOLINK_BUILD_PYTHON` (default `ON`)
-- `AUTOLINK_BUILD_DOCS` (default `ON`)
-
-## Installation
-
-### Option A: Docker (recommended)
-
-Use scripts under `docker/`:
+**Docker（推荐）**
 
 ```bash
-# x86_64 image
 python3 docker/build_docker_x86_64.py -f dockerfile/autolink.x86_64.dockerfile
-
-# run container
 python3 docker/run.py
 ```
 
-### Option B: Native (Ubuntu)
-
-Install dependencies:
+**本机**
 
 ```bash
 python3 scripts/install_dependency.py
-```
-
-Build and install:
-
-```bash
-cmake -S . -B build \
-  -DAUTOLINK_ENABLE_CYCLONEDDS=ON \
-  -DAUTOLINK_ENABLE_FASTDDS=ON
-cmake --build build -j8
-sudo cmake --install build
-```
-
-跨机 / 同机 DIFF_HOST 验收（需真实 DDS，非 stub）：
-
-```bash
-./scripts/amw_preflight.sh build
-./scripts/amw_sim_dual_host.sh amw_cyclonedds 0 10
-```
-
-更多环境变量与双机步骤见 `docs/source/amw/overview.md`。
-
-## Quick Start
-
-### 1) Build examples
-
-```bash
-cmake -S . -B build -DAUTOLINK_BUILD_EXAMPLES=ON
+cmake -S . -B build -DAUTOLINK_ENABLE_CYCLONEDDS=ON   # 需要 Fast DDS 再加 -DAUTOLINK_ENABLE_FASTDDS=ON
 cmake --build build -j8
 ```
 
-Example binaries are under `build/bin/examples/`.
+常用开关（默认均为 `ON`，除 DDS）：`AUTOLINK_BUILD_{TOOLS,EXAMPLES,PYTHON,TEST,DOCS}`。
 
-### 2) Run talker/listener
-
-Terminal 1:
+## 运行前
 
 ```bash
-./build/bin/examples/autolink_example_listener
+export AUTOLINK_PATH=$PWD/autolink
+export LD_LIBRARY_PATH=$PWD/build/lib:$LD_LIBRARY_PATH
+export PATH=$PWD/build/bin:$PATH
 ```
 
-Terminal 2:
+## 快速试用
+
+**C++ Pub/Sub**
 
 ```bash
-./build/bin/examples/autolink_example_talker
+./build/bin/examples/autolink_example_listener   # 终端 1
+./build/bin/examples/autolink_example_talker     # 终端 2
 ```
 
-### 3) Run POD examples
-
-Single process:
+**Python Pub/Sub**
 
 ```bash
-./build/bin/examples/autolink_example_pod_talker_listener
+export PYTHONPATH=$PWD/build/python
+python3 examples/python/py_listener.py          # 终端 1
+python3 examples/python/py_talker.py            # 终端 2
 ```
 
-Two processes:
+更多示例：[`examples/cpp`](examples/cpp/)、[`examples/python`](examples/python/)。
+
+## CLI
+
+产物：`build/bin/autolink`。
 
 ```bash
-# terminal 1
-./build/bin/examples/autolink_example_pod_listener
-
-# terminal 2
-./build/bin/examples/autolink_example_pod_talker
-```
-
-For detailed POD steps, see:
-
-- `examples/cpp/README.md`
-- `docs/source/guide/pod_message.md`
-
-## CMake Package Integration
-
-This project installs CMake package files for external consumers:
-
-- `find_package(Autolink REQUIRED)`
-- `target_link_libraries(your_target PRIVATE Autolink::Autolink)`
-
-In-tree reference demo:
-
-- `examples/cpp-cmake/`
-
-## Tools
-
-When `AUTOLINK_BUILD_TOOLS=ON`, a unified CLI is built from `autolink/tools/`:
-
-- `autolink channel` / `node` / `service` / `action` / `param` / `recorder` / `launch` / `monitor` / `doctor` / `completion`
-
-Examples:
-
-```bash
-autolink --wait 3 channel list -v
-autolink channel pub /chatter '{"content":"hi"}' --type autolink.proto.Chatter
-autolink channel echo /chatter --once
-autolink service call /add_two_ints '{"a":1,"b":2}' --type ...
-autolink param list <node>
-autolink launch list
 autolink doctor
-eval "$(autolink completion bash)"   # or: source scripts/completion/autolink.bash
-autolink recorder play -f demo.record
+autolink channel list -v
+autolink channel echo channel/chatter --once
+autolink param list <node>
+eval "$(autolink completion bash)"
 ```
 
-CLI e2e smoke（需已编译 examples）:
+完整命令与 `pub` / `call` / `send_goal`：[`docs/source/tools/cli.md`](docs/source/tools/cli.md)  
+冒烟：`./scripts/cli_e2e_smoke.sh build`
+
+## 文档
+
+- [快速开始](docs/source/guide/quickstart.md)
+- [C++ API](docs/source/api/cpp.md) · [Python API](docs/source/api/python.md)
+- [AMW / 跨机](docs/source/amw/overview.md)
+- [CLI](docs/source/tools/cli.md) · [FAQ](docs/source/faq.md)
 
 ```bash
-./scripts/cli_e2e_smoke.sh build
+cd docs && pip install -r requirements.txt && mkdocs serve
 ```
 
-## Documentation
+## 接入你的工程
 
-Docs are built with MkDocs:
-
-```bash
-pip install -r docs/requirements.txt
-cmake --build build --target docs
+```cmake
+find_package(Autolink REQUIRED)
+target_link_libraries(your_target PRIVATE Autolink::Autolink)
 ```
 
-Or local preview:
+参考：`examples/cpp-cmake/`。
 
-```bash
-cd docs
-mkdocs serve
-```
+## 排障
 
-## Troubleshooting
-
-- Ensure `AUTOLINK_PATH` points to a directory containing `conf/autolink.pb.conf`.
-- If running multiple examples, avoid duplicated node names and stale processes.
-- If external CMake cannot find package, set `CMAKE_PREFIX_PATH` to your install prefix.
+| 现象 | 处理 |
+|---|---|
+| 找不到配置 | 检查 `AUTOLINK_PATH`（需含 `conf/autolink.pb.conf`） |
+| 跨机连不上 | 双方同一 `AUTOLINK_DOMAIN_ID`；`autolink doctor` |
+| 动态库找不到 | 设置 `LD_LIBRARY_PATH=$PWD/build/lib` |
+| CMake 找不到包 | 设置 `CMAKE_PREFIX_PATH` 到安装前缀 |
