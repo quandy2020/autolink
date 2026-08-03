@@ -207,6 +207,30 @@ FlowDirection ChannelManager::GetFlowDirection(
     return node_graph_.GetDirectionOf(lhs, rhs);
 }
 
+void ChannelManager::RepublishLocalRoles() {
+    RoleAttrVec writers;
+    RoleAttrVec readers;
+    channel_writers_.GetAllRoles(&writers);
+    channel_readers_.GetAllRoles(&readers);
+    ChangeMsg msg;
+    for (const auto& attr : writers) {
+        if (attr.process_id() != process_id_ ||
+            attr.host_name() != host_name_) {
+            continue;
+        }
+        Convert(attr, RoleType::ROLE_WRITER, OperateType::OPT_JOIN, &msg);
+        Publish(msg);
+    }
+    for (const auto& attr : readers) {
+        if (attr.process_id() != process_id_ ||
+            attr.host_name() != host_name_) {
+            continue;
+        }
+        Convert(attr, RoleType::ROLE_READER, OperateType::OPT_JOIN, &msg);
+        Publish(msg);
+    }
+}
+
 bool ChannelManager::IsMessageTypeMatching(const std::string& lhs,
                                            const std::string& rhs) {
     if (lhs == rhs) {

@@ -27,8 +27,11 @@
 
 #include "autolink/common/log.hpp"
 #include "autolink/common/types.hpp"
+#include "autolink/message/message_traits.hpp"
 #include "autolink/node/node_channel_impl.hpp"
+#include "autolink/proto/topology_change.pb.h"
 #include "autolink/service/client_base.hpp"
+#include "autolink/service_discovery/topology_manager.hpp"
 
 namespace autolink {
 
@@ -51,6 +54,8 @@ public:
     using SharedPromise = std::shared_ptr<Promise>;
     using SharedFuture = std::shared_future<SharedResponse>;
     using CallbackType = std::function<void(SharedFuture)>;
+    using ChangeConnection =
+        typename service_discovery::Manager::ChangeConnection;
 
     /**
      * @brief Construct a new Client object
@@ -70,7 +75,9 @@ public:
      */
     Client() = delete;
 
-    virtual ~Client() {}
+    virtual ~Client() {
+        Destroy();
+    }
 
     /**
      * @brief Init the Client
@@ -155,6 +162,10 @@ private:
         return response_receiver_ != nullptr;
     }
 
+    void JoinTheTopology();
+    void LeaveTheTopology();
+    void OnChannelChange(const proto::ChangeMsg& change_msg);
+
     std::string node_name_;
 
     std::function<void(const std::shared_ptr<Response>&,
@@ -171,15 +182,35 @@ private:
     std::string request_channel_;
     std::string response_channel_;
 
+    proto::RoleAttributes request_writer_attr_;
+    proto::RoleAttributes response_reader_attr_;
+    service_discovery::ChannelManagerPtr channel_manager_;
+    ChangeConnection change_conn_;
+
     transport::Identity writer_id_;
     uint64_t sequence_number_;
 };
 
 template <typename Request, typename Response>
-void Client<Request, Response>::Destroy() {}
+void Client<Request, Response>::Destroy() {
+    if (!IsInit()) {
+        return;
+    }
+    LeaveTheTopology();
+    {
+        std::lock_guard<std::mutex> lock(pending_requests_mutex_);
+        pending_requests_.clear();
+    }
+    response_receiver_.reset();
+    request_transmitter_.reset();
+    channel_manager_ = nullptr;
+}
 
 template <typename Request, typename Response>
 bool Client<Request, Response>::Init() {
+    if (IsInit()) {
+        return true;
+    }
     proto::RoleAttributes role;
     role.set_host_name(common::GlobalData::Instance()->HostName());
     role.set_host_ip(common::GlobalData::Instance()->HostIp());
@@ -188,16 +219,19 @@ bool Client<Request, Response>::Init() {
     role.set_channel_name(request_channel_);
     auto channel_id = common::GlobalData::RegisterChannel(request_channel_);
     role.set_channel_id(channel_id);
+    role.set_message_type(message::MessageType<Request>());
     role.mutable_qos_profile()->CopyFrom(
         transport::QosProfileConf::QOS_PROFILE_SERVICES_DEFAULT);
     auto transport = transport::Transport::Instance();
-    request_transmitter_ =
-        transport->CreateTransmitter<Request>(role, proto::OptionalMode::SHM);
+    request_transmitter_ = transport->CreateTransmitter<Request>(
+        role, proto::OptionalMode::HYBRID);
     if (request_transmitter_ == nullptr) {
         AERROR << "Create request pub failed.";
         return false;
     }
     writer_id_ = request_transmitter_->id();
+    request_writer_attr_.CopyFrom(role);
+    request_writer_attr_.set_id(writer_id_.HashValue());
 
     response_callback_ =
         std::bind(&Client<Request, Response>::HandleResponse, this,
@@ -206,22 +240,89 @@ bool Client<Request, Response>::Init() {
     role.set_channel_name(response_channel_);
     channel_id = common::GlobalData::RegisterChannel(response_channel_);
     role.set_channel_id(channel_id);
+    role.set_message_type(message::MessageType<Response>());
     response_receiver_ = transport->CreateReceiver<Response>(
         role,
         [=](const std::shared_ptr<Response>& response,
             const transport::MessageInfo& message_info,
             const proto::RoleAttributes& reader_attr) {
-            (void)message_info;
             (void)reader_attr;
             response_callback_(response, message_info);
         },
-        proto::OptionalMode::SHM);
+        proto::OptionalMode::HYBRID);
     if (response_receiver_ == nullptr) {
         AERROR << "Create response sub failed.";
         request_transmitter_.reset();
         return false;
     }
+    response_reader_attr_.CopyFrom(role);
+    response_reader_attr_.set_id(response_receiver_->id().HashValue());
+
+    channel_manager_ =
+        service_discovery::TopologyManager::Instance()->channel_manager();
+    JoinTheTopology();
     return true;
+}
+
+template <typename Request, typename Response>
+void Client<Request, Response>::JoinTheTopology() {
+    change_conn_ = channel_manager_->AddChangeListener(std::bind(
+        &Client<Request, Response>::OnChannelChange, this,
+        std::placeholders::_1));
+
+    std::vector<proto::RoleAttributes> readers;
+    channel_manager_->GetReadersOfChannel(request_channel_, &readers);
+    for (auto& reader : readers) {
+        request_transmitter_->Enable(reader);
+    }
+    channel_manager_->Join(request_writer_attr_, proto::RoleType::ROLE_WRITER,
+                           message::HasSerializer<Request>::value);
+
+    std::vector<proto::RoleAttributes> writers;
+    channel_manager_->GetWritersOfChannel(response_channel_, &writers);
+    for (auto& writer : writers) {
+        response_receiver_->Enable(writer);
+    }
+    channel_manager_->Join(response_reader_attr_, proto::RoleType::ROLE_READER,
+                           message::HasSerializer<Response>::value);
+}
+
+template <typename Request, typename Response>
+void Client<Request, Response>::LeaveTheTopology() {
+    if (channel_manager_ == nullptr) {
+        return;
+    }
+    channel_manager_->RemoveChangeListener(change_conn_);
+    channel_manager_->Leave(request_writer_attr_,
+                            proto::RoleType::ROLE_WRITER);
+    channel_manager_->Leave(response_reader_attr_,
+                            proto::RoleType::ROLE_READER);
+}
+
+template <typename Request, typename Response>
+void Client<Request, Response>::OnChannelChange(
+    const proto::ChangeMsg& change_msg) {
+    const auto& peer = change_msg.role_attr();
+    const auto operate_type = change_msg.operate_type();
+
+    if (peer.channel_name() == request_channel_ &&
+        change_msg.role_type() == proto::RoleType::ROLE_READER) {
+        if (operate_type == proto::OperateType::OPT_JOIN) {
+            request_transmitter_->Enable(peer);
+        } else {
+            request_transmitter_->Disable(peer);
+        }
+        return;
+    }
+
+    if (peer.channel_name() == response_channel_ &&
+        change_msg.role_type() == proto::RoleType::ROLE_WRITER) {
+        if (operate_type == proto::OperateType::OPT_JOIN) {
+            response_receiver_->Enable(peer);
+        } else {
+            response_receiver_->Disable(peer);
+        }
+    }
 }
 
 template <typename Request, typename Response>
@@ -275,7 +376,11 @@ Client<Request, Response>::AsyncSendRequest(SharedRequest request,
         std::lock_guard<std::mutex> lock(pending_requests_mutex_);
         sequence_number_++;
         transport::MessageInfo info(writer_id_, sequence_number_, writer_id_);
-        request_transmitter_->Transmit(request, info);
+        if (!request_transmitter_->Transmit(request, info)) {
+            AWARN << "Send request failed (no peer or transport error) channel="
+                  << request_channel_;
+            return std::shared_future<std::shared_ptr<Response>>();
+        }
         SharedPromise call_promise = std::make_shared<Promise>();
         SharedFuture f(call_promise->get_future());
         pending_requests_[info.seq_num()] =
@@ -288,7 +393,14 @@ Client<Request, Response>::AsyncSendRequest(SharedRequest request,
 
 template <typename Request, typename Response>
 bool Client<Request, Response>::ServiceIsReady() const {
-    return true;
+    auto* topology = service_discovery::TopologyManager::Instance();
+    const bool has_service =
+        topology->service_manager()->HasService(service_name_);
+    const bool has_request_reader =
+        topology->channel_manager()->HasReader(request_channel_);
+    const bool has_response_writer =
+        topology->channel_manager()->HasWriter(response_channel_);
+    return has_service && has_request_reader && has_response_writer;
 }
 
 template <typename Request, typename Response>

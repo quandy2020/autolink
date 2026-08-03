@@ -17,9 +17,13 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 
 #include "autolink/common/macros.hpp"
+#include "autolink/common/types.hpp"
+#include "autolink/service_discovery/topology_manager.hpp"
 
 namespace autolink {
 
@@ -61,20 +65,47 @@ protected:
     std::string service_name_;
 
     bool WaitForServiceNanoseconds(std::chrono::nanoseconds time_out) {
-        bool has_service = false;
-        auto step_duration = std::chrono::nanoseconds(5 * 1000 * 1000);
-        while (time_out.count() > 0) {
-            has_service = service_discovery::TopologyManager::Instance()
-                              ->service_manager()
-                              ->HasService(service_name_);
-            if (!has_service) {
-                std::this_thread::sleep_for(step_duration);
-                time_out -= step_duration;
+        auto* topology = service_discovery::TopologyManager::Instance();
+        const std::string request_channel =
+            service_name_ + SRV_CHANNEL_REQ_SUFFIX;
+        const auto ready = [&]() {
+            return topology->service_manager()->HasService(service_name_) &&
+                   topology->channel_manager()->HasReader(request_channel);
+        };
+        if (ready()) {
+            return true;
+        }
+
+        std::mutex mu;
+        std::condition_variable cv;
+        auto conn = topology->AddChangeListener(
+            [&](const service_discovery::ChangeMsg& /*msg*/) {
+                cv.notify_all();
+            });
+        struct ListenerGuard {
+            service_discovery::TopologyManager* topology;
+            service_discovery::TopologyManager::ChangeConnection conn;
+            ~ListenerGuard() {
+                topology->RemoveChangeListener(conn);
+            }
+        } guard{topology, conn};
+
+        const bool forever = time_out.count() < 0;
+        const auto deadline =
+            std::chrono::steady_clock::now() +
+            (forever ? std::chrono::hours(24 * 365) : time_out);
+        std::unique_lock<std::mutex> lock(mu);
+        while (forever || std::chrono::steady_clock::now() < deadline) {
+            if (ready()) {
+                return true;
+            }
+            if (forever) {
+                cv.wait_for(lock, std::chrono::milliseconds(50));
             } else {
-                break;
+                cv.wait_until(lock, deadline);
             }
         }
-        return has_service;
+        return ready();
     }
 };
 

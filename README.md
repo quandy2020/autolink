@@ -4,8 +4,14 @@ Autolink is a local-first communication framework focused on controllable deploy
 
 ## Project Status
 
-- Transport mode is **INTRA + SHM only**.
-- Topology discovery/registration is handled by the local backend.
+- Local: **INTRA + SHM**；跨机：**Fast DDS** / **Cyclone DDS**
+  （`-DAUTOLINK_ENABLE_FASTDDS=ON` / `-DAUTOLINK_ENABLE_CYCLONEDDS=ON`）。
+- Writer/Reader/**Service/Client**/Action/Parameter 均默认 **HYBRID**，选型对齐 ROS 2
+ （`RMW_IMPLEMENTATION` / `AUTOLINK_AMW_IMPLEMENTATION`、`ROS_DOMAIN_ID` /
+  `AUTOLINK_DOMAIN_ID`、`AUTOLINK_IP`）。
+- 支持外部 `libamw_*.so` 插件 ABI（`AUTOLINK_AMW_PLUGIN_PATH`）；OpenDDS/Connext 可外挂。
+- 同机 DIFF_HOST 模拟：`scripts/amw_sim_{dual_host,service,action,param}.sh`。
+- 详见 `docs/source/autolink_amw_cn.md`、`docs/source/autolink_amw_dual_host_cn.md`。
 
 ## Core Features
 
@@ -60,10 +66,21 @@ python3 scripts/install_dependency.py
 Build and install:
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build \
+  -DAUTOLINK_ENABLE_CYCLONEDDS=ON \
+  -DAUTOLINK_ENABLE_FASTDDS=ON
 cmake --build build -j8
 sudo cmake --install build
 ```
+
+跨机 / 同机 DIFF_HOST 验收（需真实 DDS，非 stub）：
+
+```bash
+./scripts/amw_preflight.sh build
+./scripts/amw_sim_dual_host.sh amw_cyclonedds 0 10
+```
+
+更多环境变量与双机步骤见 `docs/source/autolink_amw_cn.md`。
 
 ## Quick Start
 

@@ -190,6 +190,10 @@ public:
      */
     bool IsMessageTypeMatching(const std::string& lhs, const std::string& rhs);
 
+    // Re-announce local writers/readers so late joiners that missed durable
+    // topology history can still Enable peers (needed for Service/Client).
+    void RepublishLocalRoles();
+
 private:
     bool Check(const RoleAttributes& attr) override;
     void Dispose(const ChangeMsg& msg) override;

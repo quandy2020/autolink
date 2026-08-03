@@ -9,4 +9,6 @@
 - [开发者 API](autolink_api_for_developers.md)
 - [Python API](autolink_python_api_cn.md)
 - [开发者工具](autolink_developer_tools.md)
+- [AMW 中间件框架](autolink_amw_cn.md)
+- [AMW 双机联调](autolink_amw_dual_host_cn.md)
 - [常见问题](autolink_faqs.md)

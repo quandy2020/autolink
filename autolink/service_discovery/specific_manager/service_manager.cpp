@@ -50,6 +50,30 @@ void ServiceManager::GetClients(const std::string& service_name,
     clients_.Search(key, clients);
 }
 
+void ServiceManager::RepublishLocalRoles() {
+    RoleAttrVec servers;
+    RoleAttrVec clients;
+    servers_.GetAllRoles(&servers);
+    clients_.GetAllRoles(&clients);
+    ChangeMsg msg;
+    for (const auto& attr : servers) {
+        if (attr.process_id() != process_id_ ||
+            attr.host_name() != host_name_) {
+            continue;
+        }
+        Convert(attr, RoleType::ROLE_SERVER, OperateType::OPT_JOIN, &msg);
+        Publish(msg);
+    }
+    for (const auto& attr : clients) {
+        if (attr.process_id() != process_id_ ||
+            attr.host_name() != host_name_) {
+            continue;
+        }
+        Convert(attr, RoleType::ROLE_CLIENT, OperateType::OPT_JOIN, &msg);
+        Publish(msg);
+    }
+}
+
 bool ServiceManager::Check(const RoleAttributes& attr) {
     RETURN_VAL_IF(attr.service_name().empty(), false);
     RETURN_VAL_IF(attr.service_id() == 0, false);

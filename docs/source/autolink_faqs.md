@@ -81,9 +81,10 @@ So, to decrease the latency, you can change the mechanism, The steps are listed 
 4. build CyberRT with opt like `bazel build -c opt --copt=-fpic //autolink/...`;
 5. run talker and listener;
 
-Note:You can select the corresponding transmission method according to the relationship between nodes.For example, the
-default configuration is **INTRA** in the process, **SHM** between the host process, and **RTPS** across the host. Of
-course you can change all three to RTPS. Or change `same_proc` and `diff_proc` to **SHM**;
+Note: You can select the corresponding transmission method according to the relationship between nodes. For example, the
+default modes are **INTRA** (same process), **SHM** (same host, different process), and **RTPS/DDS** (cross-host)
+when Autolink is built with Fast DDS and/or Cyclone DDS (`AUTOLINK_ENABLE_FASTDDS` / `AUTOLINK_ENABLE_CYCLONEDDS`).
+See [AMW](autolink_amw_cn.md).
 
 ## How to use the no serialization message?
 
@@ -96,18 +97,24 @@ bytes. You can refer the sample code:
 
 ## How to configure multiple hosts communication?
 
-Make sure the two hosts(or more) are under the same network segment of the local area network, Like `192.168.10.6` and
-`192.168.10.7`.
-
-You just need to modify `AUTOLINK_IP` of `/autolink/setup.bash`
+Multi-host works when Autolink is built with **`-DAUTOLINK_ENABLE_FASTDDS=ON`** and/or
+**`-DAUTOLINK_ENABLE_CYCLONEDDS=ON`**. Usage matches ROS 2:
 
 ```bash
-export AUTOLINK_IP=127.0.0.1
+export AUTOLINK_AMW_IMPLEMENTATION=amw_cyclonedds  # or amw_fastdds / RMW_IMPLEMENTATION=...
+export AUTOLINK_DOMAIN_ID=0                        # or ROS_DOMAIN_ID
+export AUTOLINK_IP=<this_host_lan_ip>              # e.g. 192.168.10.6
+
+# Host A
+./bin/examples/autolink_example_amw_talker
+# Host B
+./bin/examples/autolink_example_amw_listener
 ```
 
-Suppose you have two hosts A and B，the ip of A is `192.168.10.6`, and the ip of B is `192.168.10.7`. Then set
-`AUTOLINK_IP` to `192.168.10.6` on host A, and set `AUTOLINK_IP` to `192.168.10.7` on host B. Now host A can communicate with
-host B.
+Both hosts must share the same Domain ID and be on the same LAN (multicast/discovery reachable).
+If `AUTOLINK_AMW_IMPLEMENTATION` / `RMW_IMPLEMENTATION` is unset and the configured/default
+vendor is a stub, AMW auto-selects a real builtin (FastDDS then Cyclone). See [AMW](autolink_amw_cn.md)
+and [AMW dual-host](autolink_amw_dual_host_cn.md).
 
 ---
 

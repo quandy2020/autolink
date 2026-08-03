@@ -16,6 +16,8 @@
 
 #include "autolink/transport/transport.hpp"
 
+#include "autolink/amw/amw.hpp"
+
 namespace autolink {
 namespace transport {
 
@@ -23,6 +25,7 @@ Transport::Transport() {
     notifier_ = NotifierFactory::CreateNotifier();
     intra_dispatcher_ = IntraDispatcher::Instance();
     shm_dispatcher_ = ShmDispatcher::Instance();
+    amw::Amw::Instance()->Init();
 }
 
 Transport::~Transport() {
@@ -37,6 +40,7 @@ void Transport::Shutdown() {
     intra_dispatcher_->Shutdown();
     shm_dispatcher_->Shutdown();
     notifier_->Shutdown();
+    amw::Amw::Instance()->Shutdown();
 }
 
 }  // namespace transport

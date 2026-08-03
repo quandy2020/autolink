@@ -47,6 +47,7 @@ public:
     explicit NodeServiceImpl(const std::string& node_name)
         : node_name_(node_name) {
         attr_.set_host_name(common::GlobalData::Instance()->HostName());
+        attr_.set_host_ip(common::GlobalData::Instance()->HostIp());
         attr_.set_process_id(common::GlobalData::Instance()->ProcessId());
         attr_.set_node_name(node_name);
         auto node_id = common::GlobalData::RegisterNode(node_name);

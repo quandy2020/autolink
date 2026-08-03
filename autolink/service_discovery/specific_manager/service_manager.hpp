@@ -77,6 +77,9 @@ public:
      */
     void GetClients(const std::string& service_name, RoleAttrVec* clients);
 
+    // Re-announce local servers/clients for late topology joiners.
+    void RepublishLocalRoles();
+
 private:
     bool Check(const RoleAttributes& attr) override;
     void Dispose(const ChangeMsg& msg) override;

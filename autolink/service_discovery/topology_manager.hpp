@@ -52,10 +52,10 @@ using ServiceManagerPtr = std::shared_ptr<ServiceManager>;
  * we use TopologyManager, it has three sub managers -- NodeManager: You can
  * find Nodes in this topology ChannelManager: You can find Channels in this
  * topology, and their Writers and Readers ServiceManager: You can find Services
- * in this topology, and their Servers and Clients TopologyManager use
- * fast-rtps' Participant to communicate. It can broadcast Join or Leave
- * messages of those elements. Also, you can register you own `ChangeFunc` to
- * monitor topology change
+ * in this topology, and their Servers and Clients. TopologyManager broadcasts
+ * Join/Leave via AMW network discovery (`/autolink/topology`) when a real DDS
+ * provider is ready; otherwise a local backend is used. Register a
+ * `ChangeFunc` to monitor topology change.
  */
 class TopologyManager
 {
@@ -115,6 +115,8 @@ private:
     bool ParseParticipantName(const std::string& participant_name,
                               std::string* host_name, int* process_id);
 
+    void OnRemoteNodeJoin(const ChangeMsg& change_msg);
+
     std::atomic<bool> init_;             /// Is TopologyManager inited
     NodeManagerPtr node_manager_;        /// shared ptr of NodeManager
     ChannelManagerPtr channel_manager_;  /// shared ptr of ChannelManager
@@ -122,6 +124,7 @@ private:
     std::unique_ptr<ITopologyBackend> backend_;
     ChangeSignal change_signal_;           /// topology changing signal,
                                            ///< connect to `ChangeFunc`s
+    ChangeConnection node_change_conn_;
 
     DECLARE_SINGLETON(TopologyManager)
 };

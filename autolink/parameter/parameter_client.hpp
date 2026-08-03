@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -82,6 +83,21 @@ public:
      * @return false call service fail or timeout
      */
     bool ListParameters(std::vector<Parameter>* parameters);
+
+    /**
+     * @brief Wait until set/get/list parameter services are ready
+     *        (HasService + request reader + response writer).
+     */
+    template <typename DurationT>
+    bool WaitForService(const DurationT& timeout =
+                            std::chrono::milliseconds(-1)) {
+        return get_parameter_client_ &&
+               get_parameter_client_->WaitForService(timeout) &&
+               set_parameter_client_ &&
+               set_parameter_client_->WaitForService(timeout) &&
+               list_parameters_client_ &&
+               list_parameters_client_->WaitForService(timeout);
+    }
 
 private:
     std::shared_ptr<Node> node_;

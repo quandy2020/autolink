@@ -26,6 +26,7 @@
 #include <memory>
 #include <string>
 
+#include "autolink/amw/amw.hpp"
 #include "autolink/binary.hpp"
 #include "autolink/common/file.hpp"
 #include "autolink/common/global_data.hpp"
@@ -121,6 +122,10 @@ bool Init(const char* binary_name, const std::string& dag_info) {
         g_atexit_registered = true;
     }
     SetState(STATE_INITIALIZED);
+
+    // Register AMW providers early so IsNetworkMiddlewareReady() is valid
+    // immediately after Init (before Transport/Writer lazy construction).
+    amw::Amw::Instance()->Init();
 
     auto global_data = GlobalData::Instance();
     if (global_data->IsMockTimeMode()) {

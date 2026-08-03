@@ -22,9 +22,12 @@
 #include <utility>
 
 #include "autolink/common/types.hpp"
+#include "autolink/message/message_traits.hpp"
 #include "autolink/node/node_channel_impl.hpp"
+#include "autolink/proto/topology_change.pb.h"
 #include "autolink/scheduler/scheduler.hpp"
 #include "autolink/service/service_base.hpp"
+#include "autolink/service_discovery/topology_manager.hpp"
 
 namespace autolink {
 
@@ -42,6 +45,9 @@ class Service : public ServiceBase
 public:
     using ServiceCallback = std::function<void(const std::shared_ptr<Request>&,
                                                std::shared_ptr<Response>&)>;
+    using ChangeConnection =
+        typename service_discovery::Manager::ChangeConnection;
+
     /**
      * @brief Construct a new Service object
      *
@@ -102,6 +108,10 @@ private:
         return request_receiver_ != nullptr;
     }
 
+    void JoinTheTopology();
+    void LeaveTheTopology();
+    void OnChannelChange(const proto::ChangeMsg& change_msg);
+
     std::string node_name_;
     ServiceCallback service_callback_;
 
@@ -114,6 +124,11 @@ private:
     std::string response_channel_;
     std::mutex service_handle_request_mutex_;
 
+    proto::RoleAttributes response_writer_attr_;
+    proto::RoleAttributes request_reader_attr_;
+    service_discovery::ChannelManagerPtr channel_manager_;
+    ChangeConnection change_conn_;
+
     volatile bool inited_ = false;
     void Enqueue(std::function<void()>&& task);
     void Process();
@@ -125,7 +140,11 @@ private:
 
 template <typename Request, typename Response>
 void Service<Request, Response>::destroy() {
+    if (!inited_) {
+        return;
+    }
     inited_ = false;
+    LeaveTheTopology();
     {
         std::lock_guard<std::mutex> lg(queue_mutex_);
         this->tasks_.clear();
@@ -134,6 +153,9 @@ void Service<Request, Response>::destroy() {
     if (thread_.joinable()) {
         thread_.join();
     }
+    request_receiver_.reset();
+    response_transmitter_.reset();
+    channel_manager_ = nullptr;
 }
 
 template <typename Request, typename Response>
@@ -174,15 +196,21 @@ bool Service<Request, Response>::Init() {
     role.set_channel_name(response_channel_);
     auto channel_id = common::GlobalData::RegisterChannel(response_channel_);
     role.set_channel_id(channel_id);
+    role.set_message_type(message::MessageType<Response>());
+    // Omit proto_desc on topology Join: large descriptors were observed to be
+    // dropped from TRANSIENT_LOCAL history for late joiners over CycloneDDS.
     role.mutable_qos_profile()->CopyFrom(
         transport::QosProfileConf::QOS_PROFILE_SERVICES_DEFAULT);
     auto transport = transport::Transport::Instance();
     response_transmitter_ =
-        transport->CreateTransmitter<Response>(role, proto::OptionalMode::SHM);
+        transport->CreateTransmitter<Response>(role,
+                                               proto::OptionalMode::HYBRID);
     if (response_transmitter_ == nullptr) {
         AERROR << " Create response pub failed.";
         return false;
     }
+    response_writer_attr_.CopyFrom(role);
+    response_writer_attr_.set_id(response_transmitter_->id().HashValue());
 
     request_callback_ =
         std::bind(&Service<Request, Response>::HandleRequest, this,
@@ -191,6 +219,7 @@ bool Service<Request, Response>::Init() {
     role.set_channel_name(request_channel_);
     channel_id = common::GlobalData::RegisterChannel(request_channel_);
     role.set_channel_id(channel_id);
+    role.set_message_type(message::MessageType<Request>());
     request_receiver_ = transport->CreateReceiver<Request>(
         role,
         [=](const std::shared_ptr<Request>& request,
@@ -202,15 +231,82 @@ bool Service<Request, Response>::Init() {
             };
             Enqueue(std::move(task));
         },
-        proto::OptionalMode::SHM);
-    inited_ = true;
-    thread_ = std::thread(&Service<Request, Response>::Process, this);
+        proto::OptionalMode::HYBRID);
     if (request_receiver_ == nullptr) {
         AERROR << " Create request sub failed." << request_channel_;
         response_transmitter_.reset();
         return false;
     }
+    request_reader_attr_.CopyFrom(role);
+    request_reader_attr_.set_id(request_receiver_->id().HashValue());
+
+    channel_manager_ =
+        service_discovery::TopologyManager::Instance()->channel_manager();
+    JoinTheTopology();
+
+    inited_ = true;
+    thread_ = std::thread(&Service<Request, Response>::Process, this);
     return true;
+}
+
+template <typename Request, typename Response>
+void Service<Request, Response>::JoinTheTopology() {
+    change_conn_ = channel_manager_->AddChangeListener(std::bind(
+        &Service<Request, Response>::OnChannelChange, this,
+        std::placeholders::_1));
+
+    std::vector<proto::RoleAttributes> readers;
+    channel_manager_->GetReadersOfChannel(response_channel_, &readers);
+    for (auto& reader : readers) {
+        response_transmitter_->Enable(reader);
+    }
+    channel_manager_->Join(response_writer_attr_, proto::RoleType::ROLE_WRITER,
+                           message::HasSerializer<Response>::value);
+
+    std::vector<proto::RoleAttributes> writers;
+    channel_manager_->GetWritersOfChannel(request_channel_, &writers);
+    for (auto& writer : writers) {
+        request_receiver_->Enable(writer);
+    }
+    channel_manager_->Join(request_reader_attr_, proto::RoleType::ROLE_READER,
+                           message::HasSerializer<Request>::value);
+}
+
+template <typename Request, typename Response>
+void Service<Request, Response>::LeaveTheTopology() {
+    if (channel_manager_ == nullptr) {
+        return;
+    }
+    channel_manager_->RemoveChangeListener(change_conn_);
+    channel_manager_->Leave(response_writer_attr_,
+                            proto::RoleType::ROLE_WRITER);
+    channel_manager_->Leave(request_reader_attr_, proto::RoleType::ROLE_READER);
+}
+
+template <typename Request, typename Response>
+void Service<Request, Response>::OnChannelChange(
+    const proto::ChangeMsg& change_msg) {
+    const auto& peer = change_msg.role_attr();
+    const auto operate_type = change_msg.operate_type();
+
+    if (peer.channel_name() == response_channel_ &&
+        change_msg.role_type() == proto::RoleType::ROLE_READER) {
+        if (operate_type == proto::OperateType::OPT_JOIN) {
+            response_transmitter_->Enable(peer);
+        } else {
+            response_transmitter_->Disable(peer);
+        }
+        return;
+    }
+
+    if (peer.channel_name() == request_channel_ &&
+        change_msg.role_type() == proto::RoleType::ROLE_WRITER) {
+        if (operate_type == proto::OperateType::OPT_JOIN) {
+            request_receiver_->Enable(peer);
+        } else {
+            request_receiver_->Disable(peer);
+        }
+    }
 }
 
 template <typename Request, typename Response>
@@ -218,7 +314,6 @@ void Service<Request, Response>::HandleRequest(
     const std::shared_ptr<Request>& request,
     const transport::MessageInfo& message_info) {
     if (!IsInit()) {
-        // LOG_DEBUG << "not inited error.";
         return;
     }
     ADEBUG << "handling request:" << request_channel_;
@@ -235,12 +330,21 @@ void Service<Request, Response>::SendResponse(
     const transport::MessageInfo& message_info,
     const std::shared_ptr<Response>& response) {
     if (!IsInit()) {
-        // LOG_DEBUG << "not inited error.";
         return;
     }
-    // publish return value ?
-    // LOG_DEBUG << "send response id:" << message_id.sequence_number;
-    response_transmitter_->Transmit(response, message_info);
+    // Late-joining response readers may arrive after the request; refresh peers
+    // before transmit so DIFF_HOST RTPS is not dropped as "no peer".
+    if (channel_manager_) {
+        std::vector<proto::RoleAttributes> readers;
+        channel_manager_->GetReadersOfChannel(response_channel_, &readers);
+        for (auto& reader : readers) {
+            response_transmitter_->Enable(reader);
+        }
+    }
+    if (!response_transmitter_->Transmit(response, message_info)) {
+        AWARN << "SendResponse failed (no peer or transport error) channel="
+              << response_channel_;
+    }
 }
 
 }  // namespace autolink

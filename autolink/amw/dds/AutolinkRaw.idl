@@ -1,0 +1,7 @@
+module autolink_amw {
+  struct AutolinkRawSample {
+    unsigned long long seq_num;
+    unsigned long long sender_id;
+    sequence<octet> payload;
+  };
+};

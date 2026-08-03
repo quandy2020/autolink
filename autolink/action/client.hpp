@@ -17,6 +17,7 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <future>
 #include <map>
@@ -34,6 +35,7 @@
 #include "autolink/node/node.hpp"
 #include "autolink/node/reader.hpp"
 #include "autolink/service/client.hpp"
+#include "autolink/service_discovery/topology_manager.hpp"
 
 namespace autolink {
 namespace action {
@@ -154,7 +156,28 @@ public:
      */
     bool ActionServerIsReady() const;
 
+    /**
+     * @brief Wait until the action server is ready (event-driven).
+     *
+     * Blocks until SendGoal/CancelGoal/GetResult services are discoverable,
+     * or until timeout. Negative timeout waits indefinitely (same as Service).
+     *
+     * @tparam RatioT timeout unit, default is std::milli
+     * @param timeout wait time in unit of `RatioT`
+     * @return true if the action server became ready
+     * @return false if timeout
+     */
+    template <typename RatioT = std::milli>
+    bool WaitForActionServer(
+        std::chrono::duration<int64_t, RatioT> timeout =
+            std::chrono::duration<int64_t, RatioT>(-1)) {
+        return WaitForActionServerNanoseconds(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(timeout));
+    }
+
 private:
+    bool WaitForActionServerNanoseconds(std::chrono::nanoseconds time_out);
+
     void Init();
 
     void HandleFeedback(
@@ -476,6 +499,49 @@ bool Client<ActionT>::ActionServerIsReady() const {
            << (get_result_client_ && get_result_client_->ServiceIsReady())
            << ", overall=" << ready;
     return ready;
+}
+
+template <typename ActionT>
+bool Client<ActionT>::WaitForActionServerNanoseconds(
+    std::chrono::nanoseconds time_out) {
+    if (ActionServerIsReady()) {
+        return true;
+    }
+    if (!send_goal_client_ || !cancel_goal_client_ || !get_result_client_) {
+        return false;
+    }
+
+    auto* topology = service_discovery::TopologyManager::Instance();
+    std::mutex mu;
+    std::condition_variable cv;
+    auto conn = topology->AddChangeListener(
+        [&](const service_discovery::ChangeMsg& /*msg*/) {
+            cv.notify_all();
+        });
+    struct ListenerGuard {
+        service_discovery::TopologyManager* topology;
+        service_discovery::TopologyManager::ChangeConnection conn;
+        ~ListenerGuard() {
+            topology->RemoveChangeListener(conn);
+        }
+    } guard{topology, conn};
+
+    const bool forever = time_out.count() < 0;
+    const auto deadline =
+        std::chrono::steady_clock::now() +
+        (forever ? std::chrono::hours(24 * 365) : time_out);
+    std::unique_lock<std::mutex> lock(mu);
+    while (forever || std::chrono::steady_clock::now() < deadline) {
+        if (ActionServerIsReady()) {
+            return true;
+        }
+        if (forever) {
+            cv.wait_for(lock, std::chrono::milliseconds(50));
+        } else {
+            cv.wait_until(lock, deadline);
+        }
+    }
+    return ActionServerIsReady();
 }
 
 template <typename ActionT>

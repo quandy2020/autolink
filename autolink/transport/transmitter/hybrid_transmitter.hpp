@@ -31,6 +31,7 @@
 #include "autolink/proto/transport_conf.pb.h"
 #include "autolink/task/task.hpp"
 #include "autolink/transport/message/history.hpp"
+#include "autolink/amw/amw.hpp"
 #include "autolink/transport/transmitter/intra_transmitter.hpp"
 #include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
@@ -160,10 +161,32 @@ bool HybridTransmitter<M>::Transmit(const MessagePtr& msg,
                                     const MessageInfo& msg_info) {
     std::lock_guard<std::mutex> lock(mutex_);
     history_->Add(msg, msg_info);
+    // INTRA/SHM: only send when Hybrid has matched peers.
+    // RTPS: DDS discovery matches endpoints; do not require Hybrid peer
+    // bookkeeping (avoids Service/Action response races on DIFF_HOST).
+    bool ok = true;
+    bool sent = false;
     for (auto& item : transmitters_) {
-        item.second->Transmit(msg, msg_info);
+        if (item.second == nullptr) {
+            continue;
+        }
+        auto recv_it = receivers_.find(item.first);
+        const bool has_peer =
+            recv_it != receivers_.end() && !recv_it->second.empty();
+        if (!has_peer && item.first != OptionalMode::RTPS) {
+            continue;
+        }
+        sent = true;
+        if (!item.second->Transmit(msg, msg_info)) {
+            ok = false;
+        }
     }
-    return true;
+    if (!sent) {
+        ADEBUG << "HybridTransmitter: no matched peer yet, drop send channel="
+               << this->attr_.channel_name();
+        return false;
+    }
+    return ok;
 }
 
 template <typename M>
@@ -229,6 +252,23 @@ void HybridTransmitter<M>::InitTransmitters() {
                 transmitters_[mode] =
                     std::make_shared<ShmTransmitter<M>>(this->attr_);
                 break;
+            case OptionalMode::RTPS: {
+                auto tx = amw::Amw::Instance()->CreateTransmitter<M>(
+                    this->attr_, OptionalMode::RTPS);
+                if (tx) {
+                    transmitters_[mode] = tx;
+                } else if (mode_->diff_host() == OptionalMode::RTPS) {
+                    // Cross-host depends on DDS; never silently fall back to SHM.
+                    AERROR << "HybridTransmitter: RTPS unavailable for "
+                              "DIFF_HOST; not falling back to SHM.";
+                } else {
+                    AWARN << "HybridTransmitter: RTPS unavailable, "
+                             "falling back to SHM (same-host relations only).";
+                    transmitters_[mode] =
+                        std::make_shared<ShmTransmitter<M>>(this->attr_);
+                }
+                break;
+            }
             default:
                 transmitters_[mode] =
                     std::make_shared<ShmTransmitter<M>>(this->attr_);

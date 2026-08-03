@@ -20,24 +20,25 @@
 #include <memory>
 #include <string>
 
+#include "autolink/amw/amw.hpp"
+#include "autolink/common/log.hpp"
 #include "autolink/common/macros.hpp"
 #include "autolink/proto/transport_conf.pb.h"
 #include "autolink/transport/dispatcher/intra_dispatcher.hpp"
 #include "autolink/transport/dispatcher/shm_dispatcher.hpp"
 #include "autolink/transport/qos/qos_profile_conf.hpp"
-#include "autolink/transport/receiver/intra_receiver.hpp"
 #include "autolink/transport/receiver/receiver.hpp"
-#include "autolink/transport/receiver/shm_receiver.hpp"
 #include "autolink/transport/shm/notifier_factory.hpp"
-#include "autolink/transport/transmitter/intra_transmitter.hpp"
-#include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
 
 namespace autolink {
 namespace transport {
 using ParticipantPtr = std::shared_ptr<void>;
 }
-}
+}  // namespace autolink
+
+#include "autolink/transport/receiver/hybrid_receiver.hpp"
+#include "autolink/transport/transmitter/hybrid_transmitter.hpp"
 
 namespace autolink {
 namespace transport {
@@ -53,14 +54,14 @@ public:
 
     template <typename M>
     auto CreateTransmitter(const RoleAttributes& attr,
-                           const OptionalMode& mode = OptionalMode::SHM) ->
+                           const OptionalMode& mode = OptionalMode::HYBRID) ->
         typename std::shared_ptr<Transmitter<M>>;
 
     template <typename M>
     auto CreateReceiver(
         const RoleAttributes& attr,
         const typename Receiver<M>::MessageListener& msg_listener,
-        const OptionalMode& mode = OptionalMode::SHM) ->
+        const OptionalMode& mode = OptionalMode::HYBRID) ->
         typename std::shared_ptr<Receiver<M>>;
 
     ParticipantPtr participant() const {
@@ -86,31 +87,20 @@ auto Transport::CreateTransmitter(const RoleAttributes& attr,
         return nullptr;
     }
 
-    std::shared_ptr<Transmitter<M>> transmitter = nullptr;
     RoleAttributes modified_attr = attr;
     if (modified_attr.qos_profile().depth() == 0) {
         modified_attr.mutable_qos_profile()->CopyFrom(
             QosProfileConf::QOS_PROFILE_DEFAULT);
     }
 
-    switch (mode) {
-        case OptionalMode::INTRA:
-            transmitter = std::make_shared<IntraTransmitter<M>>(modified_attr);
-            break;
-
-        case OptionalMode::SHM:
-            transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
-            break;
-
-        case OptionalMode::RTPS:
-            transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
-            break;
-
-        default:
-            transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
-            break;
+    if (mode == OptionalMode::HYBRID) {
+        auto transmitter = std::make_shared<HybridTransmitter<M>>(
+            modified_attr, participant_);
+        return transmitter;
     }
 
+    auto transmitter =
+        amw::Amw::Instance()->CreateTransmitter<M>(modified_attr, mode);
     RETURN_VAL_IF_NULL(transmitter, nullptr);
     if (mode != OptionalMode::HYBRID) {
         transmitter->Enable();
@@ -128,39 +118,22 @@ auto Transport::CreateReceiver(
         return nullptr;
     }
 
-    std::shared_ptr<Receiver<M>> receiver = nullptr;
     RoleAttributes modified_attr = attr;
     if (modified_attr.qos_profile().depth() == 0) {
         modified_attr.mutable_qos_profile()->CopyFrom(
             QosProfileConf::QOS_PROFILE_DEFAULT);
     }
 
-    switch (mode) {
-        case OptionalMode::INTRA:
-            receiver =
-                std::make_shared<IntraReceiver<M>>(modified_attr, msg_listener);
-            break;
-
-        case OptionalMode::SHM:
-            receiver =
-                std::make_shared<ShmReceiver<M>>(modified_attr, msg_listener);
-            break;
-
-        case OptionalMode::RTPS:
-            receiver =
-                std::make_shared<ShmReceiver<M>>(modified_attr, msg_listener);
-            break;
-
-        default:
-            receiver =
-                std::make_shared<ShmReceiver<M>>(modified_attr, msg_listener);
-            break;
+    if (mode == OptionalMode::HYBRID) {
+        auto receiver = std::make_shared<HybridReceiver<M>>(
+            modified_attr, msg_listener, participant_);
+        return receiver;
     }
 
+    auto receiver = amw::Amw::Instance()->CreateReceiver<M>(
+        modified_attr, msg_listener, mode);
     RETURN_VAL_IF_NULL(receiver, nullptr);
-    if (mode != OptionalMode::HYBRID) {
-        receiver->Enable();
-    }
+    receiver->Enable();
     return receiver;
 }
 

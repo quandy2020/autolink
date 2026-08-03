@@ -2,11 +2,15 @@ syntax = "proto3";
 
 package autolink.proto;
 
+// OptionalMode selects a transport path.
+// INTRA / SHM are implemented by LocalProvider.
+// RTPS maps to the AMW network provider (default: FastDDS stub).
+// HYBRID is reserved for relation-based routing via Amw Router.
 enum OptionalMode {
   HYBRID = 0;
   INTRA = 1;
   SHM = 2;
-  RTPS = 3;
+  RTPS = 3;  // DDS provider (FastDDS via AMW; stub until DDS lands)
 }
 
 message ShmMulticastLocator {
@@ -44,12 +48,24 @@ message RtpsParticipantAttr {
 
 message CommunicationMode {
   OptionalMode same_proc = 1;  // INTRA SHM RTPS
-  OptionalMode diff_proc = 2;    // SHM RTPS
-  OptionalMode diff_host = 3;   // RTPS
+  OptionalMode diff_proc = 2;  // SHM RTPS
+  OptionalMode diff_host = 3;  // RTPS (DDS); SHM only valid same-host
 }
 
 message ResourceLimit {
   uint32 max_history_depth = 1;
+}
+
+// AMW (Autonomy Middleware) configuration.
+// Selection mirrors ROS 2 RMW_IMPLEMENTATION.
+message AmwConf {
+  // Short vendor name: fastdds | cyclonedds | opendds | connext
+  string default_network_provider = 1;
+  // ROS 2 style implementation id, e.g. amw_fastdds / rmw_fastrtps_cpp /
+  // rmw_cyclonedds_cpp / rmw_connextdds / amw_opendds.
+  // Overrides default_network_provider when set. Env
+  // AUTOLINK_AMW_IMPLEMENTATION or RMW_IMPLEMENTATION overrides this field.
+  string implementation = 2;
 }
 
 message TransportConf {
@@ -57,4 +73,5 @@ message TransportConf {
   RtpsParticipantAttr participant_attr = 2;
   CommunicationMode communication_mode = 3;
   ResourceLimit resource_limit = 4;
+  AmwConf amw_conf = 5;
 }

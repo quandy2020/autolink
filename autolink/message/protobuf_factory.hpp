@@ -21,13 +21,17 @@
 #include <mutex>
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "autolink/common/macros.hpp"
 #include "autolink/proto/proto_desc.pb.h"
 #include "google/protobuf/compiler/parser.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/io/tokenizer.h"
+#include "google/protobuf/stubs/common.h"
+
+#if GOOGLE_PROTOBUF_VERSION >= 4022000
+#include "absl/strings/string_view.h"
+#endif
 
 namespace autolink {
 namespace message {
@@ -45,6 +49,8 @@ class ErrorCollector : public google::protobuf::DescriptorPool::ErrorCollector
         google::protobuf::DescriptorPool::ErrorCollector::ErrorLocation;
 
 public:
+#if GOOGLE_PROTOBUF_VERSION >= 4022000
+    // protobuf ≥ 4.22 / recent: RecordError(absl::string_view, ...)
     void RecordError(absl::string_view filename,
                      absl::string_view element_name,
                      const google::protobuf::Message* descriptor,
@@ -56,6 +62,18 @@ public:
                        const google::protobuf::Message* descriptor,
                        ErrorLocation location,
                        absl::string_view message) override;
+#else
+    // protobuf 3.x: AddError(const std::string&, ...)
+    void AddError(const std::string& filename, const std::string& element_name,
+                  const google::protobuf::Message* descriptor,
+                  ErrorLocation location, const std::string& message) override;
+
+    void AddWarning(const std::string& filename,
+                    const std::string& element_name,
+                    const google::protobuf::Message* descriptor,
+                    ErrorLocation location,
+                    const std::string& message) override;
+#endif
 };
 
 class ProtobufFactory
