@@ -26,7 +26,6 @@
 #include <memory>
 #include <string>
 
-#include "autolink/amw/amw.hpp"
 #include "autolink/binary.hpp"
 #include "autolink/common/file.hpp"
 #include "autolink/common/global_data.hpp"
@@ -111,7 +110,13 @@ bool Init(const char* binary_name, const std::string& dag_info) {
     auto thread = const_cast<std::thread*>(async_logger->LogThread());
     scheduler::Instance()->SetInnerThreadAttr("async_log", thread);
     SysMo::Instance();
-    std::signal(SIGINT, OnShutdown);
+    // Respect an embedding host's existing handler. CPython installs one for
+    // KeyboardInterrupt before importing this binding; replacing it would make
+    // Ctrl+C only flip Autolink state that the Python loop never polls.
+    auto previous_handler = std::signal(SIGINT, OnShutdown);
+    if (previous_handler != SIG_DFL && previous_handler != SIG_ERR) {
+        std::signal(SIGINT, previous_handler);
+    }
     // Register exit handlers
     if (!g_atexit_registered) {
         if (std::atexit(ExitHandle) != 0) {
@@ -122,10 +127,6 @@ bool Init(const char* binary_name, const std::string& dag_info) {
         g_atexit_registered = true;
     }
     SetState(STATE_INITIALIZED);
-
-    // Register AMW providers early so IsNetworkMiddlewareReady() is valid
-    // immediately after Init (before Transport/Writer lazy construction).
-    amw::Amw::Instance()->Init();
 
     auto global_data = GlobalData::Instance();
     if (global_data->IsMockTimeMode()) {

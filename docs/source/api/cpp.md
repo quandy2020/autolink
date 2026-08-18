@@ -55,20 +55,20 @@ auto reader = node->CreateReader<Chatter>(
 using autolink::examples::Driver;
 
 auto service = node->CreateService<Driver, Driver>(
-    "amw/driver",
+    "test_server",
     [](const std::shared_ptr<Driver>& req, std::shared_ptr<Driver>& res) {
         res->set_msg_id(req->msg_id());
         res->set_timestamp(autolink::Time::Now().ToNanosecond());
     });
 
-auto client = node->CreateClient<Driver, Driver>("amw/driver");
+auto client = node->CreateClient<Driver, Driver>("test_server");
 // client->WaitForService(timeout);  // 若需要显式等待
 auto req = std::make_shared<Driver>();
 req->set_msg_id(7);
 auto res = client->SendRequest(req);  // 未就绪时可能为空
 ```
 
-同进程演示：`autolink_example_service`。跨机：`amw_service` / `amw_client`。
+同进程演示：`autolink_example_service`。
 
 ## Action
 
@@ -179,5 +179,3 @@ while (r.ReadMessage(&msg)) {
 ## 日志
 
 `AINFO` / `AWARN` / `AERROR`（glog）。`GLOG_logtostderr=1` 打到终端。
-
-跨机环境变量与 QoS 见 [AMW](../amw/overview.md)。

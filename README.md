@@ -1,6 +1,6 @@
 # Autolink
 
-本地优先的通信框架：同进程 INTRA、同机 SHM、跨机 DDS（Fast DDS / Cyclone DDS）。
+本地优先的通信框架：同进程 INTRA、同机 SHM。
 提供 Pub/Sub、Service、Action、Parameter、录回放，以及统一 CLI 与 C++/Python API。
 
 ## 构建
@@ -16,11 +16,11 @@ python3 docker/run.py
 
 ```bash
 python3 scripts/install_dependency.py
-cmake -S . -B build -DAUTOLINK_ENABLE_CYCLONEDDS=ON   # 需要 Fast DDS 再加 -DAUTOLINK_ENABLE_FASTDDS=ON
+cmake -S . -B build
 cmake --build build -j8
 ```
 
-常用开关（默认均为 `ON`，除 DDS）：`AUTOLINK_BUILD_{TOOLS,EXAMPLES,PYTHON,TEST,DOCS}`。
+常用开关（默认均为 `ON`）：`AUTOLINK_BUILD_{TOOLS,EXAMPLES,PYTHON,TEST,DOCS}`。
 
 ## 运行前
 
@@ -68,7 +68,6 @@ eval "$(autolink completion bash)"
 
 - [快速开始](docs/source/guide/quickstart.md)
 - [C++ API](docs/source/api/cpp.md) · [Python API](docs/source/api/python.md)
-- [AMW / 跨机](docs/source/amw/overview.md)
 - [CLI](docs/source/tools/cli.md) · [FAQ](docs/source/faq.md)
 
 ```bash
@@ -89,6 +88,5 @@ target_link_libraries(your_target PRIVATE Autolink::Autolink)
 | 现象 | 处理 |
 |---|---|
 | 找不到配置 | 检查 `AUTOLINK_PATH`（需含 `conf/autolink.pb.conf`） |
-| 跨机连不上 | 双方同一 `AUTOLINK_DOMAIN_ID`；`autolink doctor` |
 | 动态库找不到 | 设置 `LD_LIBRARY_PATH=$PWD/build/lib` |
 | CMake 找不到包 | 设置 `CMAKE_PREFIX_PATH` 到安装前缀 |

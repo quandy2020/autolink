@@ -20,15 +20,18 @@
 #include <memory>
 #include <string>
 
-#include "autolink/amw/amw.hpp"
 #include "autolink/common/log.hpp"
 #include "autolink/common/macros.hpp"
 #include "autolink/proto/transport_conf.pb.h"
 #include "autolink/transport/dispatcher/intra_dispatcher.hpp"
 #include "autolink/transport/dispatcher/shm_dispatcher.hpp"
 #include "autolink/transport/qos/qos_profile_conf.hpp"
+#include "autolink/transport/receiver/intra_receiver.hpp"
 #include "autolink/transport/receiver/receiver.hpp"
+#include "autolink/transport/receiver/shm_receiver.hpp"
 #include "autolink/transport/shm/notifier_factory.hpp"
+#include "autolink/transport/transmitter/intra_transmitter.hpp"
+#include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
 
 namespace autolink {
@@ -99,12 +102,22 @@ auto Transport::CreateTransmitter(const RoleAttributes& attr,
         return transmitter;
     }
 
-    auto transmitter =
-        amw::Amw::Instance()->CreateTransmitter<M>(modified_attr, mode);
-    RETURN_VAL_IF_NULL(transmitter, nullptr);
-    if (mode != OptionalMode::HYBRID) {
-        transmitter->Enable();
+    std::shared_ptr<Transmitter<M>> transmitter;
+    switch (mode) {
+        case OptionalMode::INTRA:
+            transmitter = std::make_shared<IntraTransmitter<M>>(modified_attr);
+            break;
+        case OptionalMode::SHM:
+            transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
+            break;
+        case OptionalMode::RTPS:
+            AERROR << "RTPS transport is not available; use HYBRID/INTRA/SHM.";
+            return nullptr;
+        default:
+            transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
+            break;
     }
+    transmitter->Enable();
     return transmitter;
 }
 
@@ -130,9 +143,24 @@ auto Transport::CreateReceiver(
         return receiver;
     }
 
-    auto receiver = amw::Amw::Instance()->CreateReceiver<M>(
-        modified_attr, msg_listener, mode);
-    RETURN_VAL_IF_NULL(receiver, nullptr);
+    std::shared_ptr<Receiver<M>> receiver;
+    switch (mode) {
+        case OptionalMode::INTRA:
+            receiver = std::make_shared<IntraReceiver<M>>(modified_attr,
+                                                          msg_listener);
+            break;
+        case OptionalMode::SHM:
+            receiver = std::make_shared<ShmReceiver<M>>(modified_attr,
+                                                        msg_listener);
+            break;
+        case OptionalMode::RTPS:
+            AERROR << "RTPS transport is not available; use HYBRID/INTRA/SHM.";
+            return nullptr;
+        default:
+            receiver = std::make_shared<ShmReceiver<M>>(modified_attr,
+                                                        msg_listener);
+            break;
+    }
     receiver->Enable();
     return receiver;
 }

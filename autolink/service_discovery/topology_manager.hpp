@@ -53,9 +53,8 @@ using ServiceManagerPtr = std::shared_ptr<ServiceManager>;
  * find Nodes in this topology ChannelManager: You can find Channels in this
  * topology, and their Writers and Readers ServiceManager: You can find Services
  * in this topology, and their Servers and Clients. TopologyManager broadcasts
- * Join/Leave via AMW network discovery (`/autolink/topology`) when a real DDS
- * provider is ready; otherwise a local backend is used. Register a
- * `ChangeFunc` to monitor topology change.
+ * Join/Leave via the local topology backend. Register a `ChangeFunc` to
+ * monitor topology change.
  */
 class TopologyManager
 {

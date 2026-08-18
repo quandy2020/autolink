@@ -37,5 +37,6 @@ int main(int argc, char** argv) {
     AINFO << "string: " << parameter.AsString();
     param_client->GetParameter("int", &parameter);
     AINFO << "int: " << parameter.AsInt64();
+    autolink::WaitForShutdown();
     return 0;
 }

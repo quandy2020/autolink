@@ -232,5 +232,26 @@ TEST(MultiValueWarehouseTest, test1) {
     }
 }
 
+TEST(MultiValueWarehouseTest, IgnoreDuplicateRoleIdOnSameKey) {
+    MultiValueWarehouse wh;
+    RoleAttributes attr;
+    attr.set_host_name("host");
+    attr.set_process_id(42);
+    attr.set_node_id(7);
+    attr.set_channel_id(20);
+    attr.set_id(99);
+
+    auto first = std::make_shared<RoleWriter>(attr, 1);
+    auto duplicate = std::make_shared<RoleWriter>(attr, 2);
+    EXPECT_TRUE(wh.Add(20, first));
+    EXPECT_TRUE(wh.Add(20, duplicate));
+    EXPECT_EQ(wh.Size(), 1);
+
+    attr.set_id(100);
+    auto other = std::make_shared<RoleWriter>(attr, 3);
+    EXPECT_TRUE(wh.Add(20, other));
+    EXPECT_EQ(wh.Size(), 2);
+}
+
 }  // namespace service_discovery
 }  // namespace autolink

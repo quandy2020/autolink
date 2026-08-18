@@ -90,16 +90,16 @@ protected:
             }
         } guard{topology, conn};
 
-        const bool forever = time_out.count() < 0;
+        const bool wait_forever = time_out.count() < 0;
         const auto deadline =
             std::chrono::steady_clock::now() +
-            (forever ? std::chrono::hours(24 * 365) : time_out);
+            (wait_forever ? std::chrono::hours(24 * 365) : time_out);
         std::unique_lock<std::mutex> lock(mu);
-        while (forever || std::chrono::steady_clock::now() < deadline) {
+        while (wait_forever || std::chrono::steady_clock::now() < deadline) {
             if (ready()) {
                 return true;
             }
-            if (forever) {
+            if (wait_forever) {
                 cv.wait_for(lock, std::chrono::milliseconds(50));
             } else {
                 cv.wait_until(lock, deadline);

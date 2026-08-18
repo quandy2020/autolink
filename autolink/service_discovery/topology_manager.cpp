@@ -16,8 +16,6 @@
 
 #include "autolink/service_discovery/topology_manager.hpp"
 
-#include "autolink/amw/amw.hpp"
-#include "autolink/amw/discovery/discovery_bridge.hpp"
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
 
@@ -77,56 +75,8 @@ bool TopologyManager::Init() {
     channel_manager_ = std::make_shared<ChannelManager>();
     service_manager_ = std::make_shared<ServiceManager>();
 
-    // Align with ROS 2: when a real network AMW is selected, topology rides DDS.
-    // Otherwise keep the local file backend (single-host).
-    amw::Amw::Instance()->Init();
-    const auto& amw_ctx = amw::Amw::Instance()->context();
-    const auto network_id = amw::Amw::Instance()->selected_network_provider();
-    const bool network_ready = amw::Amw::Instance()->IsNetworkMiddlewareReady();
     const std::string host_ip = common::GlobalData::Instance()->HostIp();
-
-    bool use_network = false;
-    const char* fallback_reason = nullptr;
-    if (!network_ready) {
-        fallback_reason = "network AMW is STUB / not linked";
-        AERROR << "TopologyManager: network middleware not ready "
-                  "(implementation="
-               << amw_ctx.implementation << " provider="
-               << amw::ProviderIdName(network_id)
-               << " host_ip=" << host_ip
-               << "). Cross-host discovery/RTPS disabled; "
-                  "using LocalTopologyBackend. Rebuild with "
-                  "AUTOLINK_ENABLE_FASTDDS/CYCLONEDDS and set "
-                  "AUTOLINK_AMW_IMPLEMENTATION.";
-    } else {
-        auto discovery =
-            amw::Amw::Instance()->registry()->GetDiscovery(network_id);
-        if (!discovery) {
-            fallback_reason = "discovery provider missing";
-            AERROR << "TopologyManager: network AMW selected ("
-                   << amw::ProviderIdName(network_id)
-                   << ") but discovery provider is missing; "
-                      "falling back to LocalTopologyBackend. host_ip="
-                   << host_ip;
-        } else if (discovery->IsStub()) {
-            fallback_reason = "discovery provider is stub";
-            AERROR << "TopologyManager: discovery provider is STUB ("
-                   << amw::ProviderIdName(network_id)
-                   << "); falling back to LocalTopologyBackend. host_ip="
-                   << host_ip;
-        } else {
-            backend_ = std::make_unique<amw::AmwDiscoveryBackend>(discovery);
-            use_network = true;
-        }
-    }
-    if (!use_network) {
-        backend_ = std::make_unique<LocalTopologyBackend>();
-        AWARN << "TopologyManager using LocalTopologyBackend"
-              << (fallback_reason ? std::string(" (") + fallback_reason + ")"
-                                  : "")
-              << ". Same-host only; DIFF_HOST RTPS peers will not discover "
-                 "via /autolink/topology.";
-    }
+    backend_ = std::make_unique<LocalTopologyBackend>();
 
     // Subscribe managers BEFORE Start so TRANSIENT_LOCAL topology history is
     // not taken and dropped with zero subscribers.
@@ -148,45 +98,14 @@ bool TopologyManager::Init() {
     }
 
     if (!backend_->Start()) {
-        if (use_network) {
-            AERROR << "TopologyManager: AMW network discovery Start failed ("
-                   << amw::ProviderIdName(network_id)
-                   << "); falling back to LocalTopologyBackend. host_ip="
-                   << host_ip;
-            backend_->Shutdown();
-            backend_ = std::make_unique<LocalTopologyBackend>();
-            Manager::SetTopologyBackend(backend_.get());
-            // Re-subscribe managers to the local backend.
-            node_manager_->StopDiscovery();
-            channel_manager_->StopDiscovery();
-            service_manager_->StopDiscovery();
-            if (!(InitNodeManager() && InitChannelManager() &&
-                  InitServiceManager()) ||
-                !backend_->Start()) {
-                AERROR << "start LocalTopologyBackend failed.";
-                init_.store(false);
-                return false;
-            }
-            use_network = false;
-        } else {
-            AERROR << "start LocalTopologyBackend failed.";
-            init_.store(false);
-            return false;
-        }
+        AERROR << "start LocalTopologyBackend failed.";
+        init_.store(false);
+        return false;
     }
 
-    if (use_network) {
-        AINFO << "TopologyManager using AMW network discovery: "
-              << amw::ProviderIdName(network_id)
-              << " implementation=" << amw_ctx.implementation
-              << " host_ip=" << host_ip;
-    } else {
-        AINFO << "TopologyManager using LocalTopologyBackend host_ip="
-              << host_ip;
-    }
+    AINFO << "TopologyManager using LocalTopologyBackend host_ip=" << host_ip;
 
     // When a remote node appears, re-announce local channel/service roles.
-    // Compensates for incomplete TRANSIENT_LOCAL topology history on DDS.
     node_change_conn_ = node_manager_->AddChangeListener(
         [this](const ChangeMsg& msg) { OnRemoteNodeJoin(msg); });
     return true;

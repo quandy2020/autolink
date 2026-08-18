@@ -23,8 +23,6 @@
 
 #include <CLI/CLI.hpp>
 
-#include "autolink/amw/amw.hpp"
-#include "autolink/amw/types.hpp"
 #include "autolink/autolink.hpp"
 #include "autolink/common/log.hpp"
 #include "autolink/init.hpp"
@@ -45,16 +43,12 @@ namespace autolink {
 namespace tools {
 
 void SetupDoctor(CLI::App& app) {
-    app.add_subcommand("doctor", "Check Autolink runtime / AMW readiness")
+    app.add_subcommand("doctor", "Check Autolink runtime readiness")
         ->callback([]() {
             std::cout << "=== Environment ===\n";
-            std::cout << "AUTOLINK_AMW_IMPLEMENTATION="
-                      << EnvOr("AUTOLINK_AMW_IMPLEMENTATION") << '\n';
             std::cout << "AUTOLINK_DOMAIN_ID=" << EnvOr("AUTOLINK_DOMAIN_ID")
                       << '\n';
-            std::cout << "ROS_DOMAIN_ID=" << EnvOr("ROS_DOMAIN_ID") << '\n';
             std::cout << "AUTOLINK_IP=" << EnvOr("AUTOLINK_IP") << '\n';
-            std::cout << "CYCLONEDDS_URI=" << EnvOr("CYCLONEDDS_URI") << '\n';
 
             FLAGS_minloglevel = 3;
             FLAGS_alsologtostderr = 0;
@@ -62,20 +56,6 @@ void SetupDoctor(CLI::App& app) {
                 std::cerr << "FAIL: autolink::Init failed\n";
                 throw CLI::RuntimeError(ExitCode::kError);
             }
-
-            auto* amw = amw::Amw::Instance();
-            const auto& ctx = amw->context();
-            const bool network_ready = amw->IsNetworkMiddlewareReady();
-            const char* provider =
-                amw::ProviderIdName(amw->selected_network_provider());
-
-            std::cout << "\n=== AMW ===\n";
-            std::cout << "implementation=" << ctx.implementation << '\n';
-            std::cout << "default_network_provider="
-                      << ctx.default_network_provider << '\n';
-            std::cout << "selected_provider=" << provider << '\n';
-            std::cout << "network_middleware_ready="
-                      << (network_ready ? "yes" : "no") << '\n';
 
             WaitForDiscovery();
             auto* topology =
@@ -90,16 +70,8 @@ void SetupDoctor(CLI::App& app) {
             std::cout << "nodes=" << node_attrs.size() << '\n';
 
             std::cout << "\n=== Summary ===\n";
-            if (network_ready) {
-                std::cout << "OK: network middleware ready (" << provider
-                          << ")\n";
-            } else {
-                std::cout << "WARN: network middleware not ready (local/stub?)\n"
-                          << "      DIFF_HOST needs a real DDS build "
-                             "(-DAUTOLINK_ENABLE_FASTDDS=ON / CYCLONEDDS)\n";
-            }
-            std::cout << "Tips: peers must share AUTOLINK_DOMAIN_ID/"
-                         "ROS_DOMAIN_ID; AUTOLINK_IP should be a real NIC.\n";
+            std::cout << "OK: Autolink initialized (local INTRA/SHM transport)\n";
+            std::cout << "Tips: AUTOLINK_IP should be a real NIC when using SHM.\n";
 
             autolink::Clear();
         });

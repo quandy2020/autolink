@@ -31,7 +31,6 @@
 #include "autolink/proto/transport_conf.pb.h"
 #include "autolink/task/task.hpp"
 #include "autolink/transport/message/history.hpp"
-#include "autolink/amw/amw.hpp"
 #include "autolink/transport/transmitter/intra_transmitter.hpp"
 #include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
@@ -252,23 +251,12 @@ void HybridTransmitter<M>::InitTransmitters() {
                 transmitters_[mode] =
                     std::make_shared<ShmTransmitter<M>>(this->attr_);
                 break;
-            case OptionalMode::RTPS: {
-                auto tx = amw::Amw::Instance()->CreateTransmitter<M>(
-                    this->attr_, OptionalMode::RTPS);
-                if (tx) {
-                    transmitters_[mode] = tx;
-                } else if (mode_->diff_host() == OptionalMode::RTPS) {
-                    // Cross-host depends on DDS; never silently fall back to SHM.
-                    AERROR << "HybridTransmitter: RTPS unavailable for "
-                              "DIFF_HOST; not falling back to SHM.";
-                } else {
-                    AWARN << "HybridTransmitter: RTPS unavailable, "
-                             "falling back to SHM (same-host relations only).";
-                    transmitters_[mode] =
-                        std::make_shared<ShmTransmitter<M>>(this->attr_);
-                }
+            case OptionalMode::RTPS:
+                AWARN << "HybridTransmitter: RTPS unavailable, "
+                         "falling back to SHM.";
+                transmitters_[mode] =
+                    std::make_shared<ShmTransmitter<M>>(this->attr_);
                 break;
-            }
             default:
                 transmitters_[mode] =
                     std::make_shared<ShmTransmitter<M>>(this->attr_);

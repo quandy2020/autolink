@@ -99,6 +99,37 @@ void PrintRole(const autolink::proto::RoleAttributes& attr) {
     std::cout << "\tmsgtype\t\t" << attr.message_type() << std::endl;
 }
 
+void AppendUniqueRole(std::vector<autolink::proto::RoleAttributes>* roles,
+                      const autolink::proto::RoleAttributes& attr) {
+    if (roles == nullptr) {
+        return;
+    }
+    for (const auto& existing : *roles) {
+        if (existing.id() == attr.id() &&
+            existing.process_id() == attr.process_id() &&
+            existing.host_name() == attr.host_name()) {
+            return;
+        }
+    }
+    roles->push_back(attr);
+}
+
+void PrintRoleGroup(const char* title,
+                    const std::vector<autolink::proto::RoleAttributes>& roles) {
+    std::cout << "  " << title << " (" << roles.size() << ")" << std::endl;
+    for (const auto& attr : roles) {
+        PrintRole(attr);
+    }
+}
+
+void PrintChannelRoles(const std::string& channel_name,
+                       const std::vector<autolink::proto::RoleAttributes>& writers,
+                       const std::vector<autolink::proto::RoleAttributes>& readers) {
+    std::cout << channel_name << std::endl;
+    PrintRoleGroup("Publishers", writers);
+    PrintRoleGroup("Subscribers", readers);
+}
+
 void CmdInfo(const std::string& channel_name, bool all_channels) {
     auto* topology = autolink::service_discovery::TopologyManager::Instance();
     autolink::tools::WaitForDiscovery();
@@ -106,41 +137,55 @@ void CmdInfo(const std::string& channel_name, bool all_channels) {
     topology->channel_manager()->GetWriters(&writers);
     topology->channel_manager()->GetReaders(&readers);
 
-    std::map<std::string, std::vector<autolink::proto::RoleAttributes>> info;
-    for (auto& attr : writers) {
-        info[attr.channel_name()].push_back(attr);
+    std::map<std::string, std::vector<autolink::proto::RoleAttributes>> writer_info;
+    std::map<std::string, std::vector<autolink::proto::RoleAttributes>> reader_info;
+    for (const auto& attr : writers) {
+        AppendUniqueRole(&writer_info[attr.channel_name()], attr);
     }
-    for (auto& attr : readers) {
-        info[attr.channel_name()].push_back(attr);
+    for (const auto& attr : readers) {
+        AppendUniqueRole(&reader_info[attr.channel_name()], attr);
     }
 
-    if (info.empty()) {
+    if (writer_info.empty() && reader_info.empty()) {
         std::cout << "channelsinfo dict is null" << std::endl;
         return;
     }
 
     if (!channel_name.empty()) {
-        auto it = info.find(channel_name);
-        if (it != info.end()) {
-            std::cout << channel_name << std::endl;
-            for (const auto& attr : it->second) {
-                PrintRole(attr);
-            }
+        const auto wit = writer_info.find(channel_name);
+        const auto rit = reader_info.find(channel_name);
+        if (wit == writer_info.end() && rit == reader_info.end()) {
+            std::cout << "channel not found: " << channel_name << std::endl;
+            return;
         }
+        static const std::vector<autolink::proto::RoleAttributes> kEmpty;
+        PrintChannelRoles(
+            channel_name,
+            wit == writer_info.end() ? kEmpty : wit->second,
+            rit == reader_info.end() ? kEmpty : rit->second);
         return;
     }
+    (void)all_channels;
 
     std::vector<std::string> channels;
-    for (const auto& p : info) {
+    for (const auto& p : writer_info) {
         channels.push_back(p.first);
+    }
+    for (const auto& p : reader_info) {
+        if (writer_info.find(p.first) == writer_info.end()) {
+            channels.push_back(p.first);
+        }
     }
     std::sort(channels.begin(), channels.end());
     std::cout << "The number of channels is: " << channels.size() << std::endl;
+    static const std::vector<autolink::proto::RoleAttributes> kEmpty;
     for (const auto& ch : channels) {
-        std::cout << ch << std::endl;
-        for (const auto& attr : info[ch]) {
-            PrintRole(attr);
-        }
+        const auto wit = writer_info.find(ch);
+        const auto rit = reader_info.find(ch);
+        PrintChannelRoles(
+            ch,
+            wit == writer_info.end() ? kEmpty : wit->second,
+            rit == reader_info.end() ? kEmpty : rit->second);
     }
 }
 
@@ -152,7 +197,7 @@ namespace {
 constexpr char kRawMessageType[] = "autolink.message.RawMessage";
 
 constexpr char kTwistStampedType[] =
-    "autonomy.commsgs.proto.geometry_msgs.TwistStamped";
+    "automsgs.msgs.geometry_msgs.TwistStamped";
 
 const char* KnownAutonomyChannelType(const std::string& channel_name) {
     if (channel_name == "/cmd_vel") {

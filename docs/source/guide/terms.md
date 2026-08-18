@@ -16,10 +16,8 @@ Autolink 常用概念（与实现一一对应）。
 | **Record** | 录制/回放 Channel 消息的文件（`RecordWriter`/`Reader` 或 `autolink recorder`） |
 | **Task / CRoutine** | 异步计算任务；协程以降低线程开销 |
 | **Scheduler** | 任务调度策略（`classic` / `choreography`），见 [调度器](scheduler.md) |
-| **Service discovery** | 去中心化发现对端 Node / Channel / Service（本机 + AMW 网络拓扑） |
-| **AMW** | 可插拔中间件层（Fast DDS / Cyclone DDS 等），见 [AMW](../amw/overview.md) |
-| **HYBRID** | 默认传输：同进程 INTRA、同机 SHM、跨机 DDS |
-| **DIFF_HOST** | 判定为异机（含同机故意设不同 `AUTOLINK_IP`）；走 DDS，不回退 SHM |
-| **Domain ID** | DDS 域隔离（`AUTOLINK_DOMAIN_ID` / `ROS_DOMAIN_ID`） |
+| **Service discovery** | 去中心化发现对端 Node / Channel / Service（本机拓扑） |
+| **HYBRID** | 默认传输：同进程 INTRA、同机 SHM |
+| **DIFF_HOST** | 判定为异机（含同机故意设不同 `AUTOLINK_IP`）；当前回退为 SHM（仅同机有效） |
 
 上手步骤见 [快速开始](quickstart.md)。

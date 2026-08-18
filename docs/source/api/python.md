@@ -161,6 +161,6 @@ t.start()
 | 通道 / Action 名 | 与 C++ 示例字符串一致才能互通 |
 | protobuf 类 | 须与对端同一 `.proto` 生成物 |
 | Humble iceoryx | `LD_LIBRARY_PATH` 把 `/opt/ros/humble/lib/...` 放最前 |
-| Domain / AMW | 跨机时对齐 [AMW](../amw/overview.md) 环境变量 |
+| 环境变量 | 本机通信时确保 `AUTOLINK_PATH` 与 `LD_LIBRARY_PATH` 正确 |
 
 命令行调试见 [CLI](../tools/cli.md)。

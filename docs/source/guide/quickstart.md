@@ -10,10 +10,6 @@
 export AUTOLINK_PATH=$PWD/autolink         # 须含 conf/autolink.pb.conf
 export LD_LIBRARY_PATH=$PWD/build/lib:$LD_LIBRARY_PATH
 export PATH=$PWD/build/bin:$PATH
-# Cyclone 来自 ROS Humble 时：
-# export LD_LIBRARY_PATH=/opt/ros/humble/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-# 跨机/与 AMW 示例联调时钉死实现，例如：
-# export AUTOLINK_AMW_IMPLEMENTATION=amw_cyclonedds
 ```
 
 调试日志可加：`export GLOG_logtostderr=1`。
@@ -22,8 +18,6 @@ export PATH=$PWD/build/bin:$PATH
 
 ```bash
 cmake -S . -B build \
-  -DAUTOLINK_ENABLE_CYCLONEDDS=ON \
-  -DAUTOLINK_ENABLE_FASTDDS=ON \
   -DAUTOLINK_BUILD_EXAMPLES=ON \
   -DAUTOLINK_BUILD_TOOLS=ON \
   -DAUTOLINK_BUILD_PYTHON=ON
@@ -37,7 +31,6 @@ cmake --build build -j8
 | `AUTOLINK_BUILD_PYTHON` | ON | `build/python` |
 | `AUTOLINK_BUILD_TEST` | ON | `ctest` |
 | `AUTOLINK_BUILD_DOCS` | ON | MkDocs 目标 `docs` |
-| `AUTOLINK_ENABLE_CYCLONEDDS` / `FASTDDS` | OFF | 真实 DDS（跨机必需） |
 
 示例二进制：`build/bin/examples/autolink_example_*`。
 
@@ -72,8 +65,6 @@ autolink channel echo channel/chatter --once
 ./build/bin/examples/autolink_example_service
 ```
 
-跨进程 / 跨机用 AMW 对：`amw_service` + `amw_client`（见 [AMW](../amw/overview.md)）。
-
 ## 5. Action
 
 先起 server，再 client（action 名：`examples/simple_message_action`）：
@@ -93,7 +84,6 @@ autolink channel echo channel/chatter --once
 ./build/bin/examples/autolink_example_paramserver
 ```
 
-同机 DIFF_HOST：`./scripts/amw_sim_param.sh amw_cyclonedds 0 15`。  
 CLI：`autolink param list|get|set <ParameterServer 所在 Node 名> ...`（见 [CLI](../tools/cli.md)）。
 
 ## 7. Record
@@ -149,21 +139,19 @@ python3 py_talker.py
 | 能力 | C++ 二进制（`build/bin/examples/`） | Python |
 |---|---|---|
 | Pub/Sub | `*_talker` / `*_listener` / `*_talker_listener` | `py_talker` / `py_listener` |
-| Service | `*_service`；跨机 `*_amw_service`/`*_amw_client` | `py_service` / `py_client` |
+| Service | `*_service` | `py_service` / `py_client` |
 | Action | `*_action_listener` / `*_action_talker` | `py_action_server` / `py_action_client` |
-| Parameter | `*_paramserver`；跨机 `*_amw_param_*` | `py_parameter` |
+| Parameter | `*_paramserver` | `py_parameter` |
 | Record | `*_record` | `py_record*` |
 | POD | `*_pod_*` | — |
-| AMW Pub/Sub | `*_amw_talker` / `*_amw_listener` | — |
 
-冒烟：`./scripts/cli_e2e_smoke.sh build`；同机 DDS：`./scripts/amw_preflight.sh build`。
+冒烟：`./scripts/cli_e2e_smoke.sh build`。
 
 ## 12. 下一步
 
 | 需求 | 文档 |
 |---|---|
 | 接口写法 | [C++ API](../api/cpp.md) · [Python API](../api/python.md) |
-| 跨机 DDS | [AMW](../amw/overview.md) |
 | 命令行 | [CLI](../tools/cli.md) |
 | 调度绑核 | [调度器](scheduler.md) |
 | 排障 | [FAQ](../faq.md) |

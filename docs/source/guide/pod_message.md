@@ -16,7 +16,7 @@
 - 快速验证本机 / SHM 通路  
 - 跨语言或可演进 schema → 用 protobuf  
 
-跨机请优先 protobuf + [AMW](../amw/overview.md)；POD 示例面向本机。
+POD 示例面向本机通信。
 
 ## 步骤
 

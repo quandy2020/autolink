@@ -31,26 +31,6 @@ option(AUTOLINK_BUILD_TEST "Build unit tests" ON)
 option(AUTOLINK_BUILD_EXAMPLES "Build examples" ON)
 option(AUTOLINK_BUILD_PYTHON "Build Python bindings" ON)
 option(AUTOLINK_BUILD_DOCS "Build documentation" ON)
-# Real DDS vendor linkage. OFF = AMW stubs only (default).
-# Runtime selection: AUTOLINK_AMW_IMPLEMENTATION / RMW_IMPLEMENTATION.
-option(AUTOLINK_ENABLE_FASTDDS "Link eProsima Fast DDS for multi-host AMW" OFF)
-option(AUTOLINK_ENABLE_CYCLONEDDS "Link Eclipse Cyclone DDS for multi-host AMW" OFF)
-option(AUTOLINK_ENABLE_OPENDDS "Link OpenDDS (stub until landed)" OFF)
-option(AUTOLINK_ENABLE_CONNEXTDDS "Link RTI Connext DDS (stub until landed)" OFF)
-
-if(AUTOLINK_ENABLE_FASTDDS)
-  list(APPEND CMAKE_PREFIX_PATH "/usr/local" "/opt/homebrew")
-  find_package(fastcdr REQUIRED)
-  find_package(fastdds REQUIRED)
-  message(STATUS "AUTOLINK_ENABLE_FASTDDS=ON (fastdds found)")
-endif()
-
-if(AUTOLINK_ENABLE_CYCLONEDDS)
-  list(APPEND CMAKE_PREFIX_PATH "/usr/local" "/opt/homebrew")
-  find_package(CycloneDDS REQUIRED)
-  enable_language(C)  # AutolinkRaw.c from idlc
-  message(STATUS "AUTOLINK_ENABLE_CYCLONEDDS=ON (CycloneDDS found)")
-endif()
 
 # output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

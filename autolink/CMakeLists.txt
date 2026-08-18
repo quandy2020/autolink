@@ -86,7 +86,6 @@ file(GLOB_RECURSE AUTOLINK_CORE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/time/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/timer/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/amw/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/binary.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/autolink.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/init.cpp"
@@ -111,39 +110,6 @@ if(AUTOLINK_BUILD_PYTHON)
     "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/parameter_bridge.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/utils_bridge.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/action_bridge.cpp")
-endif()
-
-# Compile defs for vendor backends (stubs always compiled for non-enabled vendors).
-if(AUTOLINK_ENABLE_FASTDDS)
-  target_compile_definitions(autolink PUBLIC AUTOLINK_ENABLE_FASTDDS=1)
-  target_link_libraries(autolink PUBLIC fastdds fastcdr)
-endif()
-if(AUTOLINK_ENABLE_CYCLONEDDS)
-  target_compile_definitions(autolink PUBLIC AUTOLINK_ENABLE_CYCLONEDDS=1)
-  target_link_libraries(autolink PUBLIC CycloneDDS::ddsc)
-  # Generate IDL → C next to the autolink build dir and compile into the library.
-  set(AUTOLINK_AMW_IDL_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/amw_idl")
-  file(MAKE_DIRECTORY "${AUTOLINK_AMW_IDL_OUT_DIR}")
-  set(AUTOLINK_AMW_IDL_C "${AUTOLINK_AMW_IDL_OUT_DIR}/AutolinkRaw.c")
-  set(AUTOLINK_AMW_IDL_H "${AUTOLINK_AMW_IDL_OUT_DIR}/AutolinkRaw.h")
-  add_custom_command(
-    OUTPUT "${AUTOLINK_AMW_IDL_C}" "${AUTOLINK_AMW_IDL_H}"
-    COMMAND $<TARGET_FILE:CycloneDDS::idlc>
-            -Wno-implicit-extensibility
-            -o "${AUTOLINK_AMW_IDL_OUT_DIR}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/amw/dds/AutolinkRaw.idl"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/amw/dds/AutolinkRaw.idl" CycloneDDS::idlc
-    COMMENT "Generating CycloneDDS types from AutolinkRaw.idl"
-    VERBATIM)
-  target_sources(autolink PRIVATE "${AUTOLINK_AMW_IDL_C}")
-  target_include_directories(autolink PUBLIC "${AUTOLINK_AMW_IDL_OUT_DIR}")
-  set_source_files_properties("${AUTOLINK_AMW_IDL_C}" PROPERTIES LANGUAGE C)
-endif()
-if(AUTOLINK_ENABLE_OPENDDS)
-  target_compile_definitions(autolink PUBLIC AUTOLINK_ENABLE_OPENDDS=1)
-endif()
-if(AUTOLINK_ENABLE_CONNEXTDDS)
-  target_compile_definitions(autolink PUBLIC AUTOLINK_ENABLE_CONNEXTDDS=1)
 endif()
 
 # croutine 协程上下文切换汇编（按架构二选一，需启用 ASM 语言）

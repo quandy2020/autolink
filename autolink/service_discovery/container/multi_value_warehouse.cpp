@@ -36,6 +36,15 @@ bool MultiValueWarehouse::Add(uint64_t key, const RolePtr& role,
         if (roles_.find(key) != roles_.end()) {
             return false;
         }
+    } else if (role) {
+        const uint64_t role_id = role->attributes().id();
+        auto range = roles_.equal_range(key);
+        for (auto it = range.first; it != range.second; ++it) {
+            if (role_id != 0 && it->second &&
+                it->second->attributes().id() == role_id) {
+                return true;
+            }
+        }
     }
     std::pair<uint64_t, RolePtr> role_pair(key, role);
     roles_.insert(role_pair);

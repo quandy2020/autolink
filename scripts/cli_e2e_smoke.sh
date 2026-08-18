@@ -17,7 +17,6 @@ LOGDIR="$(mktemp -d /tmp/autolink_cli_e2e.XXXXXX)"
 
 export AUTOLINK_PATH="${AUTOLINK_PATH:-${ROOT}}"
 export LD_LIBRARY_PATH="${BUILD}/lib:${LD_LIBRARY_PATH:-}"
-export AUTOLINK_AMW_IMPLEMENTATION="${AUTOLINK_AMW_IMPLEMENTATION:-amw_cyclonedds}"
 
 PIDS=()
 cleanup() {
@@ -100,7 +99,7 @@ ok "channel echo --once"
 ok "channel pub"
 stop_bg
 
-# --- action (before AMW service/param to avoid discovery churn) ---
+# --- action (before service/param to avoid discovery churn) ---
 "${EX}/autolink_example_action_listener" >"${LOGDIR}/action.log" 2>&1 &
 PIDS+=($!)
 accepted=0
@@ -126,15 +125,26 @@ echo "${out}" | grep -q "examples/simple_message_action" && ok "action list" \
 stop_bg
 
 # --- service ---
-"${EX}/autolink_example_amw_service" >"${LOGDIR}/service.log" 2>&1 &
+"${EX}/autolink_example_service" >"${LOGDIR}/service.log" 2>&1 &
 PIDS+=($!)
-wait_cli_grep "amw/driver" service list || {
+service_name=""
+for _ in $(seq 1 20); do
+  service_name="$(grep -oE 'service demo name: [^[:space:]]+' "${LOGDIR}/service.log" 2>/dev/null \
+    | awk '{print $NF}' | tail -1 || true)"
+  [[ -n "${service_name}" ]] && break
+  sleep 1
+done
+[[ -n "${service_name}" ]] || {
   tail -40 "${LOGDIR}/service.log" >&2 || true
-  die "amw/driver not discovered"
+  die "service name not found in log"
+}
+wait_cli_grep "${service_name}" service list || {
+  tail -40 "${LOGDIR}/service.log" >&2 || true
+  die "${service_name} not discovered"
 }
 ok "service list"
 
-out="$("${BIN}" --wait 2 service call amw/driver '{"msg_id":7}' \
+out="$("${BIN}" --wait 2 service call "${service_name}" '{"msg_id":7}' \
   --type autolink.examples.Driver \
   --descriptor-set "${FDSET}" \
   --timeout 8)" || die "service call"
@@ -143,12 +153,12 @@ ok "service call"
 stop_bg
 
 # --- param ---
-"${EX}/autolink_example_amw_param_server" >"${LOGDIR}/param.log" 2>&1 &
+"${EX}/autolink_example_paramserver" >"${LOGDIR}/param.log" 2>&1 &
 PIDS+=($!)
 ready=0
 for _ in $(seq 1 40); do
-  if out="$("${BIN}" --wait 1 param list amw_param_server 2>/dev/null)" \
-      && echo "${out}" | grep -q "amw_demo_int"; then
+  if out="$("${BIN}" --wait 1 param list parameter 2>/dev/null)" \
+      && echo "${out}" | grep -q "int"; then
     ready=1
     break
   fi
@@ -160,11 +170,11 @@ done
 }
 ok "param list"
 
-out="$("${BIN}" --wait 2 param get amw_param_server amw_demo_int)" || die "param get"
+out="$("${BIN}" --wait 2 param get parameter int)" || die "param get"
 ok "param get: ${out}"
 
-"${BIN}" --wait 2 param set amw_param_server amw_demo_int 100 || die "param set"
-out="$("${BIN}" --wait 2 param get amw_param_server amw_demo_int)" || die "param get after set"
+"${BIN}" --wait 2 param set parameter int 100 || die "param set"
+out="$("${BIN}" --wait 2 param get parameter int)" || die "param get after set"
 echo "${out}" | grep -q "100" || die "param set not applied: ${out}"
 ok "param set/get"
 stop_bg

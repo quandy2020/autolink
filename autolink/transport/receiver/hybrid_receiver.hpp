@@ -31,7 +31,6 @@
 #include "autolink/service_discovery/role/role.hpp"
 #include "autolink/task/task.hpp"
 #include "autolink/time/time.hpp"
-#include "autolink/amw/amw.hpp"
 #include "autolink/transport/receiver/intra_receiver.hpp"
 #include "autolink/transport/receiver/shm_receiver.hpp"
 
@@ -208,22 +207,12 @@ void HybridReceiver<M>::InitReceivers() {
                 receivers_[mode] =
                     std::make_shared<ShmReceiver<M>>(this->attr_, listener);
                 break;
-            case OptionalMode::RTPS: {
-                auto rx = amw::Amw::Instance()->CreateReceiver<M>(
-                    this->attr_, listener, OptionalMode::RTPS);
-                if (rx) {
-                    receivers_[mode] = rx;
-                } else if (mode_->diff_host() == OptionalMode::RTPS) {
-                    AERROR << "HybridReceiver: RTPS unavailable for "
-                              "DIFF_HOST; not falling back to SHM.";
-                } else {
-                    AWARN << "HybridReceiver: RTPS unavailable, "
-                             "falling back to SHM (same-host relations only).";
-                    receivers_[mode] =
-                        std::make_shared<ShmReceiver<M>>(this->attr_, listener);
-                }
+            case OptionalMode::RTPS:
+                AWARN << "HybridReceiver: RTPS unavailable, "
+                         "falling back to SHM.";
+                receivers_[mode] =
+                    std::make_shared<ShmReceiver<M>>(this->attr_, listener);
                 break;
-            }
             default:
                 receivers_[mode] =
                     std::make_shared<ShmReceiver<M>>(this->attr_, listener);

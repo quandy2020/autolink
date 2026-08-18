@@ -6,8 +6,6 @@
 export LD_LIBRARY_PATH=$PWD/build/lib:$LD_LIBRARY_PATH
 export PATH=$PWD/build/bin:$PATH
 export AUTOLINK_PATH=$PWD/autolink     # 含 conf/autolink.pb.conf 的树根
-# 跨机/与 example 联调时建议钉死实现，例如：
-# export AUTOLINK_AMW_IMPLEMENTATION=amw_cyclonedds
 ```
 
 全局选项（写在子命令前）：
@@ -105,8 +103,8 @@ autolink [--wait N] service <list|info|call> ...
 
 ```bash
 autolink service list
-autolink service info amw/driver
-autolink service call amw/driver '{"msg_id":7}' \
+autolink service info test_server
+autolink service call test_server '{"msg_id":7}' \
   --type autolink.examples.Driver \
   --descriptor-set /tmp/examples.pb \
   --timeout 8
@@ -154,9 +152,9 @@ autolink [--wait N] param <list|get|set> ...
 | `set` | `autolink param set <node> <name> <value>` |
 
 ```bash
-autolink param list amw_param_server
-autolink param get amw_param_server amw_demo_int
-autolink param set amw_param_server amw_demo_int 100
+autolink param list parameter
+autolink param get parameter int
+autolink param set parameter int 100
 ```
 
 ---
@@ -269,14 +267,14 @@ autolink monitor -c channel/chatter
 
 ## doctor
 
-检查环境变量、AMW 是否 ready、`--wait` 后拓扑规模。
+检查环境变量、`--wait` 后拓扑规模。
 
 ```bash
 autolink doctor
 autolink --wait 0 doctor
 ```
 
-关注输出中的 `network_middleware_ready`；为 `no` 时 DIFF_HOST/DDS 不可用。
+确认 Autolink 初始化成功，并查看当前 channels / nodes 数量。
 
 ---
 

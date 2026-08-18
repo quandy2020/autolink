@@ -1,14 +1,13 @@
 # Autolink 文档
 
-本地优先的通信框架：同进程 INTRA、同机 SHM、跨机 DDS（Fast DDS / Cyclone DDS）。
+本地优先的通信框架：同进程 INTRA、同机 SHM。
 
 ## 阅读路径
 
 1. [快速开始](guide/quickstart.md) — 环境、构建、Pub/Sub / Service / Action / Param / Record / Component  
 2. [术语](guide/terms.md) — Node / Channel / HYBRID 等  
 3. [C++ API](api/cpp.md) / [Python API](api/python.md) — 可复制接口写法  
-4. [AMW](amw/overview.md) — 跨机中间件、双机与同机 DIFF_HOST  
-5. [CLI](tools/cli.md) — `autolink` 全部子命令  
+4. [CLI](tools/cli.md) — `autolink` 全部子命令  
 
 专题：[POD 消息](guide/pod_message.md) · [调度器](guide/scheduler.md) · [FAQ](faq.md)
 

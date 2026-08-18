@@ -28,8 +28,6 @@ nav:
   - API:
       - C++: api/cpp.md
       - Python: api/python.md
-  - 中间件:
-      - AMW: amw/overview.md
   - 工具:
       - CLI: tools/cli.md
   - 常见问题: faq.md
