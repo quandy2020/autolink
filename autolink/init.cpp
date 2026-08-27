@@ -73,13 +73,16 @@ void InitLogger(const char* binary_name) {
         google::SetLogDestination(google::FATAL, "");
     }
 
-    // Init async logger
+    // Init async logger for all severities so WARN/ERROR/FATAL also fan out.
     if (async_logger != nullptr) {
         return;
     }
     async_logger = new ::autolink::logger::AsyncLogger(
-        google::base::GetLogger(FLAGS_minloglevel));
-    google::base::SetLogger(FLAGS_minloglevel, async_logger);
+        google::base::GetLogger(google::INFO));
+    for (int severity = google::GLOG_INFO; severity <= google::GLOG_FATAL;
+         ++severity) {
+        google::base::SetLogger(severity, async_logger);
+    }
     async_logger->Start();
 }
 

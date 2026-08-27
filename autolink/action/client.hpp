@@ -272,6 +272,15 @@ Client<ActionT>::AsyncSendGoal(const Goal& goal,
     // We'll use a thread or callback approach instead
     std::thread([this, promise, goal_id, options, request, response_future]() {
         try {
+            if (!response_future.valid()) {
+                AERROR << "AsyncSendGoal: send_goal Transmit failed for goal ID: "
+                       << ToString(goal_id);
+                promise->set_value(nullptr);
+                if (options.goal_response_callback) {
+                    options.goal_response_callback(nullptr);
+                }
+                return;
+            }
             ADEBUG << "AsyncSendGoal: waiting for response for goal ID: "
                    << ToString(goal_id);
             // Wait for response with timeout
@@ -453,11 +462,18 @@ std::shared_future<bool> Client<ActionT>::AsyncCancelGoal(
     auto response_future = cancel_goal_client_->AsyncSendRequest(request);
     std::thread([promise, response_future]() {
         try {
+            if (!response_future.valid()) {
+                promise->set_value(false);
+                return;
+            }
             auto response = response_future.get();
             promise->set_value(response && response->goals_canceling > 0);
         } catch (const std::exception& e) {
             AERROR << "Error in AsyncCancelGoal response: " << e.what();
-            promise->set_value(false);
+            try {
+                promise->set_value(false);
+            } catch (...) {
+            }
         }
     }).detach();
 
@@ -469,17 +485,29 @@ std::shared_future<bool> Client<ActionT>::AsyncCancelAllGoals() {
     auto promise = std::make_shared<std::promise<bool>>();
     std::shared_future<bool> future(promise->get_future());
 
+    if (!cancel_goal_client_) {
+        promise->set_value(false);
+        return future;
+    }
+
     auto request = std::make_shared<internal::CancelGoalRequest>();
     request->goal_id = GoalUUID{};
 
     auto response_future = cancel_goal_client_->AsyncSendRequest(request);
     std::thread([promise, response_future]() {
         try {
+            if (!response_future.valid()) {
+                promise->set_value(false);
+                return;
+            }
             auto response = response_future.get();
             promise->set_value(static_cast<bool>(response));
         } catch (const std::exception& e) {
             AERROR << "Error in AsyncCancelAllGoals response: " << e.what();
-            promise->set_value(false);
+            try {
+                promise->set_value(false);
+            } catch (...) {
+            }
         }
     }).detach();
 

@@ -22,6 +22,7 @@
 #include <unordered_map>
 
 #include "autolink/base/macros.hpp"
+#include "autolink/logger/log_rosout_bridge.hpp"
 #include "autolink/logger/logger_util.hpp"
 
 namespace autolink {
@@ -123,6 +124,7 @@ void AsyncLogger::FlushBuffer(const std::unique_ptr<std::deque<Msg>>& buffer) {
         module_logger_map_.find(module_name)
             ->second->Write(force_flush, msg.ts, msg.message.data(),
                             static_cast<int>(msg.message.size()));
+        BroadcastLogToRosout(msg.level, module_name, msg.message, msg.ts);
         buffer->pop_front();
     }
     Flush();

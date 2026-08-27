@@ -29,6 +29,7 @@
 #include <CLI/CLI.hpp>
 
 #include "autolink/autolink.hpp"
+#include "autolink/common/log.hpp"
 #include "autolink/init.hpp"
 #include "autolink/message/raw_message.hpp"
 #include "autolink/proto/role_attributes.pb.h"
@@ -45,25 +46,47 @@ void InstallShutdownHandlers() {
     std::signal(SIGTERM, [](int sig) { autolink::OnShutdown(sig); });
 }
 
-std::vector<std::string> GetServices(uint8_t sleep_s = 2) {
-    auto* topology = autolink::service_discovery::TopologyManager::Instance();
-    autolink::tools::WaitForDiscoveryIf(sleep_s);
-    std::vector<autolink::proto::RoleAttributes> servers;
-    topology->service_manager()->GetServers(&servers);
-    std::vector<std::string> names;
-    for (const auto& s : servers) {
-        names.push_back(s.service_name());
+void InitRuntime() {
+    InstallShutdownHandlers();
+    FLAGS_minloglevel = 3;
+    FLAGS_alsologtostderr = 0;
+    FLAGS_colorlogtostderr = 0;
+    autolink::Init("autolink");
+}
+
+bool EndsWith(const std::string& value, const std::string& suffix) {
+    return autolink::tools::EndsWith(value, suffix);
+}
+
+// Hide Action protocol services; those belong under `autolink action list`.
+bool IsActionProtocolService(const std::string& service_name) {
+    static const char* kSuffixes[] = {"/send_goal", "/cancel_goal",
+                                      "/get_result"};
+    for (const char* suffix : kSuffixes) {
+        if (EndsWith(service_name, suffix)) {
+            return true;
+        }
     }
-    std::sort(names.begin(), names.end());
+    return false;
+}
+
+std::vector<std::string> GetServices(bool include_action_services) {
+    std::vector<std::string> names = autolink::tools::DiscoverServiceNames();
+    if (!include_action_services) {
+        names.erase(std::remove_if(names.begin(), names.end(),
+                                   IsActionProtocolService),
+                    names.end());
+    }
     return names;
 }
 
-bool GetServiceAttr(const std::string& service_name, uint8_t sleep_s,
+bool GetServiceAttr(const std::string& service_name,
                     autolink::proto::RoleAttributes* out) {
-    if (!out)
+    if (!out) {
         return false;
+    }
+    autolink::tools::DiscoverServiceNames();
     auto* topology = autolink::service_discovery::TopologyManager::Instance();
-    autolink::tools::WaitForDiscoveryIf(sleep_s);
     if (!topology->service_manager()->HasService(service_name)) {
         std::cerr << "no service: " << service_name << std::endl;
         return false;
@@ -76,27 +99,28 @@ bool GetServiceAttr(const std::string& service_name, uint8_t sleep_s,
             return true;
         }
     }
-    return false;
+    // Channel fallback found the name but ROLE_SERVER attr not yet present.
+    out->set_service_name(service_name);
+    return true;
 }
 
-void PrintServiceInfo(const std::string& service_name, uint8_t sleep_s = 2) {
+void PrintServiceInfo(const std::string& service_name) {
     autolink::proto::RoleAttributes attr;
-    if (!GetServiceAttr(service_name, sleep_s, &attr)) {
+    if (!GetServiceAttr(service_name, &attr)) {
         return;
     }
-    if (attr.service_name() != service_name) {
-        std::cerr << "RoleAttributes service_name mismatch" << std::endl;
-        return;
+    std::cout << service_name << std::endl;
+    if (attr.process_id() != 0 || !attr.node_name().empty() ||
+        !attr.host_name().empty()) {
+        std::cout << "\tprocessid\t" << attr.process_id() << std::endl;
+        std::cout << "\tnodename\t" << attr.node_name() << std::endl;
+        std::cout << "\thostname\t" << attr.host_name() << std::endl;
     }
-    std::cout << attr.service_name() << std::endl;
-    std::cout << "\tprocessid\t" << attr.process_id() << std::endl;
-    std::cout << "\tnodename\t" << attr.node_name() << std::endl;
-    std::cout << "\thostname\t" << attr.host_name() << std::endl;
     std::cout << std::endl;
 }
 
-void CmdList() {
-    std::vector<std::string> services = GetServices(2);
+void CmdList(bool include_action_services) {
+    std::vector<std::string> services = GetServices(include_action_services);
     std::cout << "The number of services is: " << services.size() << std::endl;
     for (const auto& name : services) {
         std::cout << name << std::endl;
@@ -105,13 +129,13 @@ void CmdList() {
 
 void CmdInfo(bool all_services, const std::vector<std::string>& service_names) {
     if (all_services) {
-        std::vector<std::string> services = GetServices(2);
+        std::vector<std::string> services = GetServices(false);
         for (const auto& name : services) {
-            PrintServiceInfo(name, 0);
+            PrintServiceInfo(name);
         }
     } else {
         for (const auto& name : service_names) {
-            PrintServiceInfo(name, 2);
+            PrintServiceInfo(name);
         }
     }
 }
@@ -126,10 +150,14 @@ void SetupService(CLI::App& app) {
         app.add_subcommand("service", "Introspect Autolink services");
     service->require_subcommand(1);
 
-    service->add_subcommand("list", "List active services")->callback([]() {
-        InstallShutdownHandlers();
-        autolink::Init("autolink");
-        CmdList();
+    auto* list = service->add_subcommand("list", "List active services");
+    auto include_action = std::make_shared<bool>(false);
+    list->add_flag("--include-action", *include_action,
+                   "Also list Action protocol services "
+                   "(send_goal/cancel_goal/get_result)");
+    list->callback([include_action]() {
+        InitRuntime();
+        CmdList(*include_action);
         autolink::Clear();
     });
 
@@ -152,8 +180,7 @@ void SetupService(CLI::App& app) {
             throw CLI::ValidationError(
                 "info", "you may only specify one service name");
         }
-        InstallShutdownHandlers();
-        autolink::Init("autolink");
+        InitRuntime();
         CmdInfo(*all, *names);
         autolink::Clear();
     });
@@ -172,8 +199,7 @@ void SetupService(CLI::App& app) {
                      "FileDescriptorSet from protoc --descriptor_set_out");
     call->add_option("--timeout", *timeout, "Timeout seconds");
     call->callback([svc, json, type, fdset, timeout]() {
-        InstallShutdownHandlers();
-        autolink::Init("autolink");
+        InitRuntime();
 
         std::string err;
         if (!fdset->empty()) {

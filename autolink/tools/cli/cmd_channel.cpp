@@ -29,9 +29,11 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #include "autolink/autolink.hpp"
+#include "autolink/common/types.hpp"
 #include "autolink/init.hpp"
 #include "autolink/message/message_header.hpp"
 #include "autolink/message/protobuf_factory.hpp"
@@ -55,6 +57,49 @@ constexpr int kDefaultBwWindowSize = 100;
 constexpr int kDefaultHzWindowSize = 50000;
 constexpr int kMaxWindowSize = 50000;
 
+bool EndsWith(const std::string& value, const std::string& suffix) {
+    return value.size() >= suffix.size() &&
+           value.compare(value.size() - suffix.size(), suffix.size(),
+                         suffix) == 0;
+}
+
+// Hide service transport channels and Autolink Action protocol channels
+// (/feedback, /status). Keeps ordinary topics such as /autonomy/task/*/goal.
+bool IsServiceOrActionChannel(const std::string& channel,
+                              const std::unordered_set<std::string>& all) {
+    if (EndsWith(channel, autolink::SRV_CHANNEL_REQ_SUFFIX) ||
+        EndsWith(channel, autolink::SRV_CHANNEL_RES_SUFFIX) ||
+        channel.find("__SRV__") != std::string::npos) {
+        return true;
+    }
+    static const char* kActionPubSubSuffixes[] = {"/feedback", "/status"};
+    for (const char* suffix : kActionPubSubSuffixes) {
+        if (!EndsWith(channel, suffix)) {
+            continue;
+        }
+        const std::string base =
+            channel.substr(0, channel.size() - std::strlen(suffix));
+        if (all.count(base + "/send_goal" + autolink::SRV_CHANNEL_REQ_SUFFIX) ||
+            all.count(base + "/send_goal" +
+                      autolink::SRV_CHANNEL_RES_SUFFIX)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FilterUserChannels(std::vector<std::string>* channels) {
+    if (channels == nullptr) {
+        return;
+    }
+    const std::unordered_set<std::string> all(channels->begin(),
+                                              channels->end());
+    channels->erase(std::remove_if(channels->begin(), channels->end(),
+                                   [&all](const std::string& ch) {
+                                       return IsServiceOrActionChannel(ch, all);
+                                   }),
+                    channels->end());
+}
 
 // -----------------------------------------------------------------------------
 // list: list active channels (sorted)
@@ -64,6 +109,7 @@ void CmdList(bool verbose) {
     autolink::tools::WaitForDiscovery();
     std::vector<std::string> channels;
     topology->channel_manager()->GetChannelNames(&channels);
+    FilterUserChannels(&channels);
     std::sort(channels.begin(), channels.end());
     std::cout << "The number of channels is: " << channels.size() << std::endl;
     for (const auto& ch : channels) {
@@ -176,6 +222,7 @@ void CmdInfo(const std::string& channel_name, bool all_channels) {
             channels.push_back(p.first);
         }
     }
+    FilterUserChannels(&channels);
     std::sort(channels.begin(), channels.end());
     std::cout << "The number of channels is: " << channels.size() << std::endl;
     static const std::vector<autolink::proto::RoleAttributes> kEmpty;

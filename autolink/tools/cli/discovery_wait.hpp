@@ -18,6 +18,15 @@
 
 #include <unistd.h>
 
+#include <algorithm>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+#include "autolink/common/types.hpp"
+#include "autolink/proto/role_attributes.pb.h"
+#include "autolink/service_discovery/topology_manager.hpp"
+
 namespace autolink {
 namespace tools {
 
@@ -40,6 +49,49 @@ inline void WaitForDiscoveryIf(unsigned sleep_s) {
     if (sleep_s > 0) {
         WaitForDiscovery();
     }
+}
+
+inline bool EndsWith(const std::string& value, const std::string& suffix) {
+    return value.size() >= suffix.size() &&
+           value.compare(value.size() - suffix.size(), suffix.size(),
+                         suffix) == 0;
+}
+
+// Collect service names from ServiceManager, with channel-name fallback for
+// late topology joiners (ROLE_SERVER events can lag behind __SRV__ channels).
+inline std::vector<std::string> DiscoverServiceNames() {
+    auto* topology = service_discovery::TopologyManager::Instance();
+    WaitForDiscovery();
+
+    std::unordered_set<std::string> names;
+    auto collect = [&]() {
+        std::vector<proto::RoleAttributes> servers;
+        topology->service_manager()->GetServers(&servers);
+        for (const auto& s : servers) {
+            if (!s.service_name().empty()) {
+                names.insert(s.service_name());
+            }
+        }
+        std::vector<std::string> channels;
+        topology->channel_manager()->GetChannelNames(&channels);
+        const std::string req_suffix = SRV_CHANNEL_REQ_SUFFIX;
+        for (const auto& ch : channels) {
+            if (EndsWith(ch, req_suffix)) {
+                names.insert(ch.substr(0, ch.size() - req_suffix.size()));
+            }
+        }
+    };
+
+    collect();
+    // Brief retries help when Service JOIN lags behind channel discovery.
+    for (int i = 0; i < 5 && names.empty(); ++i) {
+        sleep(1);
+        collect();
+    }
+
+    std::vector<std::string> out(names.begin(), names.end());
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 // Light exit-code conventions for CLI callbacks.

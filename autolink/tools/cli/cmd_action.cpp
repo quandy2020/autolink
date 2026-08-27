@@ -32,6 +32,7 @@
 #include <CLI/CLI.hpp>
 
 #include "autolink/autolink.hpp"
+#include "autolink/common/log.hpp"
 #include "autolink/init.hpp"
 #include "autolink/proto/action.pb.h"
 #include "autolink/proto/role_attributes.pb.h"
@@ -50,14 +51,18 @@ void InstallShutdownHandlers() {
     std::signal(SIGTERM, [](int sig) { autolink::OnShutdown(sig); });
 }
 
-std::vector<std::string> GetActionNames(uint8_t sleep_s = 2) {
-    auto* topology = autolink::service_discovery::TopologyManager::Instance();
-    autolink::tools::WaitForDiscoveryIf(sleep_s);
-    std::vector<autolink::proto::RoleAttributes> servers;
-    topology->service_manager()->GetServers(&servers);
+void InitRuntime() {
+    InstallShutdownHandlers();
+    FLAGS_minloglevel = 3;
+    FLAGS_alsologtostderr = 0;
+    FLAGS_colorlogtostderr = 0;
+    autolink::Init("autolink");
+}
+
+std::vector<std::string> GetActionNames() {
+    std::vector<std::string> services = autolink::tools::DiscoverServiceNames();
     std::unordered_set<std::string> names_set;
-    for (const auto& s : servers) {
-        const std::string& svc = s.service_name();
+    for (const auto& svc : services) {
         if (svc.size() > kSendGoalSuffix.size()) {
             size_t pos = svc.size() - kSendGoalSuffix.size();
             if (svc.compare(pos, kSendGoalSuffix.size(), kSendGoalSuffix) ==
@@ -78,7 +83,7 @@ void PrintServerRole(const autolink::proto::RoleAttributes& attr) {
 }
 
 void CmdList() {
-    std::vector<std::string> actions = GetActionNames(2);
+    std::vector<std::string> actions = GetActionNames();
     std::cout << "The number of actions is: " << actions.size() << std::endl;
     for (const auto& name : actions) {
         std::cout << name << std::endl;
@@ -86,14 +91,19 @@ void CmdList() {
 }
 
 void CmdInfo(const std::string& action_name) {
+    autolink::tools::DiscoverServiceNames();
     auto* topology = autolink::service_discovery::TopologyManager::Instance();
-    autolink::tools::WaitForDiscovery();
     std::string send_goal_service = action_name + kSendGoalSuffix;
     if (!topology->service_manager()->HasService(send_goal_service)) {
-        std::cerr << "Action '" << action_name
-                  << "' has no server (no service '" << send_goal_service
-                  << "')." << std::endl;
-        return;
+        // Channel fallback: still print action if send_goal channel exists.
+        std::vector<std::string> actions = GetActionNames();
+        if (std::find(actions.begin(), actions.end(), action_name) ==
+            actions.end()) {
+            std::cerr << "Action '" << action_name
+                      << "' has no server (no service '" << send_goal_service
+                      << "')." << std::endl;
+            return;
+        }
     }
     std::vector<autolink::proto::RoleAttributes> servers;
     topology->service_manager()->GetServers(&servers);
@@ -209,8 +219,7 @@ void SetupAction(CLI::App& app) {
     action->require_subcommand(1);
 
     action->add_subcommand("list", "List active actions")->callback([]() {
-        InstallShutdownHandlers();
-        autolink::Init("autolink");
+        InitRuntime();
         CmdList();
         autolink::Clear();
     });
@@ -219,8 +228,7 @@ void SetupAction(CLI::App& app) {
     auto name = std::make_shared<std::string>();
     info->add_option("action_name", *name, "Action name")->required();
     info->callback([name]() {
-        InstallShutdownHandlers();
-        autolink::Init("autolink");
+        InitRuntime();
         CmdInfo(*name);
         autolink::Clear();
     });
@@ -236,8 +244,7 @@ void SetupAction(CLI::App& app) {
     sg->add_option("--descriptor-set", *fdset,
                    "FileDescriptorSet from protoc --descriptor_set_out");
     sg->callback([sg_name, goal, goal_type, fdset]() {
-        InstallShutdownHandlers();
-        autolink::Init("autolink");
+        InitRuntime();
         try {
             CmdSendGoal(*sg_name, *goal, *goal_type, *fdset);
         } catch (const CLI::RuntimeError&) {

@@ -85,7 +85,7 @@ void NodeManager::DisposeJoin(const ChangeMsg& msg) {
     if (!nodes_.Add(key, node, false)) {
         RolePtr existing_node;
         if (!nodes_.Search(key, &existing_node)) {
-            nodes_.Add(key, node);
+            nodes_.Add(key, node, true);
             return;
         }
 
@@ -97,20 +97,35 @@ void NodeManager::DisposeJoin(const ChangeMsg& msg) {
             return;
         }
 
-        RolePtr newer_node = existing_node;
-        if (node->IsEarlierThan(*newer_node)) {
-            nodes_.Add(key, node);
-        } else {
-            newer_node = node;
-        }
+        const bool incoming_is_local =
+            node->attributes().process_id() == process_id_ &&
+            node->attributes().host_name() == host_name_;
+        const bool existing_is_local =
+            existing_node->attributes().process_id() == process_id_ &&
+            existing_node->attributes().host_name() == host_name_;
 
-        if (newer_node->attributes().process_id() == process_id_ &&
-            newer_node->attributes().host_name() == host_name_) {
+        // Two nodes with the same name in *this* process: fatal.
+        if (incoming_is_local && existing_is_local) {
             AERROR << "this process will be terminated due to duplicated node["
                    << node->attributes().node_name()
                    << "], please ensure that each node has a unique name.";
             AsyncShutdown();
+            return;
         }
+
+        // Respawn / remote takeover: replace a stale registration from another
+        // process instead of killing the new local process.
+        RolePtr keep = existing_node;
+        if (incoming_is_local || !node->IsEarlierThan(*existing_node)) {
+            keep = node;
+        }
+        if (incoming_is_local && !existing_is_local) {
+            AWARN << "NodeManager: replacing stale node["
+                  << node->attributes().node_name() << "] from pid "
+                  << existing_node->attributes().process_id()
+                  << " with local pid " << process_id_;
+        }
+        nodes_.Add(key, keep, true);
     }
 }
 

@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 
@@ -306,9 +307,14 @@ void Server<ActionT>::HandleSendGoal(
             goal_handles_[goal_id] = goal_handle;
         }
 
-        // Call user's accepted callback
+        // Defer accepted callback so HandleRequest can SendResponse first.
+        // Running accept/work inline held the service mutex and could delay or
+        // drop the accept reply (client then hits AsyncSendGoal 10s timeout).
         if (handle_accepted_) {
-            handle_accepted_(goal_handle);
+            auto accepted = handle_accepted_;
+            std::thread([accepted, goal_handle]() {
+                accepted(goal_handle);
+            }).detach();
         }
 
         // Publish status update
