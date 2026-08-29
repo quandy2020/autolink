@@ -19,12 +19,17 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <future>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <type_traits>
+
+#if defined(__linux__)
+#include <sched.h>
+#endif
 
 #include "autolink/action/create_server.hpp"
 #include "autolink/action/server.hpp"
@@ -172,6 +177,7 @@ public:
      */
     void SetSoftRealTimePriority() {
         if (use_realtime_prioritization_) {
+#if defined(__linux__)
             sched_param sch;
             sch.sched_priority = 49;
             if (sched_setscheduler(0, SCHED_FIFO, &sch) == -1) {
@@ -184,6 +190,11 @@ public:
                 throw std::runtime_error(errmsg + std::strerror(errno));
             }
             DebugMsg("Soft realtime prioritization successfully set!");
+#else
+            DebugMsg(
+                "Soft realtime prioritization is only supported on Linux; "
+                "skipping");
+#endif
         }
     }
 
