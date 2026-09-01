@@ -53,6 +53,11 @@ void TopologyManager::Shutdown() {
     }
     Manager::SetTopologyBackend(nullptr);
 
+    {
+        std::lock_guard<std::mutex> lock(seen_remote_nodes_mutex_);
+        seen_remote_nodes_.clear();
+    }
+
     change_signal_.DisconnectAllSlots();
 }
 
@@ -124,8 +129,7 @@ bool TopologyManager::InitServiceManager() {
 }
 
 void TopologyManager::OnRemoteNodeJoin(const ChangeMsg& change_msg) {
-    if (change_msg.operate_type() != OperateType::OPT_JOIN ||
-        change_msg.role_type() != RoleType::ROLE_NODE) {
+    if (change_msg.role_type() != RoleType::ROLE_NODE) {
         return;
     }
     const auto& attr = change_msg.role_attr();
@@ -134,9 +138,29 @@ void TopologyManager::OnRemoteNodeJoin(const ChangeMsg& change_msg) {
         attr.host_name() == common::GlobalData::Instance()->HostName()) {
         return;
     }
-    AINFO << "TopologyManager: remote node join name=" << attr.node_name()
-          << " host_ip=" << attr.host_ip()
-          << "; republishing local channel/service roles.";
+
+    const uint64_t node_id = attr.node_id();
+    if (change_msg.operate_type() == OperateType::OPT_LEAVE) {
+        if (node_id != 0) {
+            std::lock_guard<std::mutex> lock(seen_remote_nodes_mutex_);
+            seen_remote_nodes_.erase(node_id);
+        }
+        return;
+    }
+    if (change_msg.operate_type() != OperateType::OPT_JOIN) {
+        return;
+    }
+
+    if (node_id != 0) {
+        std::lock_guard<std::mutex> lock(seen_remote_nodes_mutex_);
+        if (!seen_remote_nodes_.insert(node_id).second) {
+            return;
+        }
+    }
+
+    ADEBUG << "TopologyManager: remote node join name=" << attr.node_name()
+           << " host_ip=" << attr.host_ip()
+           << "; republishing local channel/service roles.";
     if (channel_manager_) {
         channel_manager_->RepublishLocalRoles();
     }

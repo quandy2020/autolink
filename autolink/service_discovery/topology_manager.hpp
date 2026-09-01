@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 
 #include "autolink/base/signal.hpp"
 #include "autolink/common/macros.hpp"
@@ -124,6 +125,8 @@ private:
     ChangeSignal change_signal_;           /// topology changing signal,
                                            ///< connect to `ChangeFunc`s
     ChangeConnection node_change_conn_;
+    std::mutex seen_remote_nodes_mutex_;
+    std::unordered_set<uint64_t> seen_remote_nodes_;
 
     DECLARE_SINGLETON(TopologyManager)
 };

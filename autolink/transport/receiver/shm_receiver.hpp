@@ -17,8 +17,10 @@
 #pragma once
 
 #include <functional>
+#include <unordered_map>
 
 #include "autolink/common/log.hpp"
+#include "autolink/proto/role_attributes.pb.h"
 #include "autolink/transport/dispatcher/shm_dispatcher.hpp"
 #include "autolink/transport/receiver/receiver.hpp"
 #include "autolink/transport/shm/protobuf_arena_manager.hpp"
@@ -41,7 +43,10 @@ public:
     void Disable(const RoleAttributes& opposite_attr) override;
 
 private:
+    void DisableAllWriters();
+
     ShmDispatcherPtr dispatcher_;
+    std::unordered_map<uint64_t, autolink::proto::RoleAttributes> enabled_writers_;
 };
 
 template <typename M>
@@ -54,6 +59,7 @@ ShmReceiver<M>::ShmReceiver(
 
 template <typename M>
 ShmReceiver<M>::~ShmReceiver() {
+    DisableAllWriters();
     Disable();
 }
 
@@ -82,7 +88,16 @@ void ShmReceiver<M>::Enable() {
 }
 
 template <typename M>
+void ShmReceiver<M>::DisableAllWriters() {
+    for (const auto& entry : enabled_writers_) {
+        dispatcher_->RemoveListener<M>(this->attr_, entry.second);
+    }
+    enabled_writers_.clear();
+}
+
+template <typename M>
 void ShmReceiver<M>::Disable() {
+    DisableAllWriters();
     if (!this->enabled_) {
         return;
     }
@@ -93,13 +108,8 @@ void ShmReceiver<M>::Disable() {
 
 template <typename M>
 void ShmReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
-    // ShmReceiver::Enable() already registers a channel-level listener.
-    // Registering an extra opposite_attr listener for the same receiver causes
-    // duplicated callbacks for each message.
-    if (this->enabled_) {
-        ADEBUG << "SHM receiver already enabled for channel ["
-               << this->attr_.channel_name()
-               << "], skip duplicate per-writer enable.";
+    const uint64_t writer_id = opposite_attr.id();
+    if (enabled_writers_.count(writer_id) > 0) {
         return;
     }
 
@@ -120,14 +130,18 @@ void ShmReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
         this->attr_, opposite_attr,
         std::bind(&ShmReceiver<M>::OnNewMessage, this, std::placeholders::_1,
                   std::placeholders::_2));
+    enabled_writers_.emplace(writer_id, opposite_attr);
 }
 
 template <typename M>
 void ShmReceiver<M>::Disable(const RoleAttributes& opposite_attr) {
-    if (this->enabled_) {
+    const uint64_t writer_id = opposite_attr.id();
+    const auto iterator = enabled_writers_.find(writer_id);
+    if (iterator == enabled_writers_.end()) {
         return;
     }
-    dispatcher_->RemoveListener<M>(this->attr_, opposite_attr);
+    dispatcher_->RemoveListener<M>(this->attr_, iterator->second);
+    enabled_writers_.erase(iterator);
 }
 
 }  // namespace transport
