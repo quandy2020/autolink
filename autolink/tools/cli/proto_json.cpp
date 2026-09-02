@@ -134,7 +134,13 @@ bool ProtobufBytesToJson(const std::string& type, const std::string& bytes,
     }
     google::protobuf::util::JsonPrintOptions opt;
     opt.add_whitespace = true;
+    // Protobuf <26: always_print_primitive_fields
+    // Protobuf >=26: renamed to always_print_fields_with_no_presence
+#if GOOGLE_PROTOBUF_VERSION >= 4026000
+    opt.always_print_fields_with_no_presence = true;
+#else
     opt.always_print_primitive_fields = true;
+#endif
     const auto status =
         google::protobuf::util::MessageToJsonString(*msg, out_json, opt);
     if (!status.ok()) {
