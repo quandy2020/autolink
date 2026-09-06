@@ -35,6 +35,10 @@
 #include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
 
+#if AUTOLINK_ENABLE_FASTDDS
+#include "autolink/transport/transmitter/rtps_transmitter.hpp"
+#endif
+
 namespace autolink {
 namespace transport {
 
@@ -91,14 +95,16 @@ private:
 
     CommunicationModePtr mode_;
     MappingTable mapping_table_;
-
+    ParticipantPtr participant_;
 };
 
 template <typename M>
 HybridTransmitter<M>::HybridTransmitter(const RoleAttributes& attr,
                                         const ParticipantPtr& participant)
-    : Transmitter<M>(attr), history_(nullptr), mode_(nullptr) {
-    (void)participant;
+    : Transmitter<M>(attr),
+      history_(nullptr),
+      mode_(nullptr),
+      participant_(participant) {
     InitMode();
     ObtainConfig();
     InitHistory();
@@ -268,8 +274,17 @@ void HybridTransmitter<M>::InitTransmitters() {
                     std::make_shared<ShmTransmitter<M>>(this->attr_);
                 break;
             case OptionalMode::RTPS:
+#if AUTOLINK_ENABLE_FASTDDS
+                if (participant_ == nullptr) {
+                    AERROR << "HybridTransmitter: RTPS participant is null.";
+                    break;
+                }
+                transmitters_[mode] = std::make_shared<RtpsTransmitter<M>>(
+                        this->attr_, participant_);
+#else
                 AERROR << "HybridTransmitter: RTPS not available "
                           "(build with -DAUTOLINK_ENABLE_FASTDDS=ON).";
+#endif
                 break;
             default:
                 transmitters_[mode] =
@@ -334,7 +349,26 @@ void HybridTransmitter<M>::ThreadFunc(
     uint64_t channel_id = common::GlobalData::RegisterChannel(new_channel_name);
     new_attr.set_channel_name(new_channel_name);
     new_attr.set_channel_id(channel_id);
-    auto new_transmitter = std::make_shared<ShmTransmitter<M>>(new_attr);
+
+    TransmitterPtr new_transmitter;
+    const auto relation = GetRelation(opposite_attr);
+    const auto mode = (relation == NO_RELATION) ? OptionalMode::SHM
+                                                : mapping_table_[relation];
+#if AUTOLINK_ENABLE_FASTDDS
+    if (mode == OptionalMode::RTPS) {
+        if (participant_ == nullptr) {
+            AERROR << "HybridTransmitter history: RTPS participant is null.";
+            return;
+        }
+        new_transmitter =
+                std::make_shared<RtpsTransmitter<M>>(new_attr, participant_);
+    } else {
+        new_transmitter = std::make_shared<ShmTransmitter<M>>(new_attr);
+    }
+#else
+    (void)mode;
+    new_transmitter = std::make_shared<ShmTransmitter<M>>(new_attr);
+#endif
     new_transmitter->Enable();
 
     for (auto& item : msgs) {

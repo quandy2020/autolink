@@ -31,8 +31,14 @@
 #include "autolink/service_discovery/role/role.hpp"
 #include "autolink/task/task.hpp"
 #include "autolink/time/time.hpp"
+#include "autolink/transport/message/history.hpp"
 #include "autolink/transport/receiver/intra_receiver.hpp"
+#include "autolink/transport/receiver/receiver.hpp"
 #include "autolink/transport/receiver/shm_receiver.hpp"
+
+#if AUTOLINK_ENABLE_FASTDDS
+#include "autolink/transport/receiver/rtps_receiver.hpp"
+#endif
 
 namespace autolink {
 namespace transport {
@@ -87,7 +93,7 @@ private:
 
     CommunicationModePtr mode_;
     MappingTable mapping_table_;
-
+    ParticipantPtr participant_;
 };
 
 template <typename M>
@@ -95,8 +101,9 @@ HybridReceiver<M>::HybridReceiver(
     const RoleAttributes& attr,
     const typename Receiver<M>::MessageListener& msg_listener,
     const ParticipantPtr& participant)
-    : Receiver<M>(attr, msg_listener), history_(nullptr) {
-    (void)participant;
+    : Receiver<M>(attr, msg_listener),
+      history_(nullptr),
+      participant_(participant) {
     InitMode();
     ObtainConfig();
     InitHistory();
@@ -220,8 +227,17 @@ void HybridReceiver<M>::InitReceivers() {
                     std::make_shared<ShmReceiver<M>>(this->attr_, listener);
                 break;
             case OptionalMode::RTPS:
+#if AUTOLINK_ENABLE_FASTDDS
+                if (participant_ == nullptr) {
+                    AERROR << "HybridReceiver: RTPS participant is null.";
+                    break;
+                }
+                receivers_[mode] = std::make_shared<RtpsReceiver<M>>(
+                        this->attr_, listener);
+#else
                 AERROR << "HybridReceiver: RTPS not available "
                           "(build with -DAUTOLINK_ENABLE_FASTDDS=ON).";
+#endif
                 break;
             default:
                 receivers_[mode] =
@@ -284,12 +300,25 @@ void HybridReceiver<M>::ThreadFunc(const RoleAttributes& opposite_attr) {
     volatile bool is_msg_arrived = false;
     auto listener = [&](const std::shared_ptr<M>& msg,
                         const MessageInfo& msg_info,
-                        const RoleAttributes& attr) {
+                        const RoleAttributes& /*attr*/) {
         is_msg_arrived = true;
         this->OnNewMessage(msg, msg_info);
     };
 
-    auto receiver = std::make_shared<ShmReceiver<M>>(attr, listener);
+    ReceiverPtr receiver;
+    const auto relation = GetRelation(opposite_attr);
+    const auto mode = (relation == NO_RELATION) ? OptionalMode::SHM
+                                                : mapping_table_[relation];
+#if AUTOLINK_ENABLE_FASTDDS
+    if (mode == OptionalMode::RTPS) {
+        receiver = std::make_shared<RtpsReceiver<M>>(attr, listener);
+    } else {
+        receiver = std::make_shared<ShmReceiver<M>>(attr, listener);
+    }
+#else
+    (void)mode;
+    receiver = std::make_shared<ShmReceiver<M>>(attr, listener);
+#endif
     receiver->Enable();
 
     do {

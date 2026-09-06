@@ -34,11 +34,18 @@
 #include "autolink/transport/transmitter/shm_transmitter.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
 
+#if AUTOLINK_ENABLE_FASTDDS
+#include "autolink/transport/dispatcher/rtps_dispatcher.hpp"
+#include "autolink/transport/receiver/rtps_receiver.hpp"
+#include "autolink/transport/rtps/participant.hpp"
+#include "autolink/transport/transmitter/rtps_transmitter.hpp"
+#else
 namespace autolink {
 namespace transport {
 using ParticipantPtr = std::shared_ptr<void>;
 }
 }  // namespace autolink
+#endif
 
 #include "autolink/transport/receiver/hybrid_receiver.hpp"
 #include "autolink/transport/transmitter/hybrid_transmitter.hpp"
@@ -111,9 +118,19 @@ auto Transport::CreateTransmitter(const RoleAttributes& attr,
             transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
             break;
         case OptionalMode::RTPS:
+#if AUTOLINK_ENABLE_FASTDDS
+            if (participant_ == nullptr) {
+                AERROR << "RTPS transport unavailable: Participant is null.";
+                return nullptr;
+            }
+            transmitter = std::make_shared<RtpsTransmitter<M>>(modified_attr,
+                                                               participant_);
+            break;
+#else
             AERROR << "RTPS transport is not available "
                       "(build with -DAUTOLINK_ENABLE_FASTDDS=ON).";
             return nullptr;
+#endif
         default:
             transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
             break;
@@ -155,9 +172,19 @@ auto Transport::CreateReceiver(
                                                         msg_listener);
             break;
         case OptionalMode::RTPS:
+#if AUTOLINK_ENABLE_FASTDDS
+            if (participant_ == nullptr) {
+                AERROR << "RTPS transport unavailable: Participant is null.";
+                return nullptr;
+            }
+            receiver = std::make_shared<RtpsReceiver<M>>(modified_attr,
+                                                         msg_listener);
+            break;
+#else
             AERROR << "RTPS transport is not available "
                       "(build with -DAUTOLINK_ENABLE_FASTDDS=ON).";
             return nullptr;
+#endif
         default:
             receiver = std::make_shared<ShmReceiver<M>>(modified_attr,
                                                         msg_listener);

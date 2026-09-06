@@ -16,6 +16,8 @@
 
 #include "autolink/transport/transport.hpp"
 
+#include "autolink/common/global_data.hpp"
+
 namespace autolink {
 namespace transport {
 
@@ -23,6 +25,19 @@ Transport::Transport() {
     notifier_ = NotifierFactory::CreateNotifier();
     intra_dispatcher_ = IntraDispatcher::Instance();
     shm_dispatcher_ = ShmDispatcher::Instance();
+#if AUTOLINK_ENABLE_FASTDDS
+    participant_ = std::make_shared<Participant>(
+            common::GlobalData::Instance()
+                    ->Config()
+                    .transport_conf()
+                    .participant_attr());
+    if (!participant_->Init()) {
+        AERROR << "RTPS Participant init failed";
+        participant_.reset();
+    } else {
+        RtpsDispatcher::Instance()->set_participant(participant_);
+    }
+#endif
 }
 
 Transport::~Transport() {
@@ -37,6 +52,13 @@ void Transport::Shutdown() {
     intra_dispatcher_->Shutdown();
     shm_dispatcher_->Shutdown();
     notifier_->Shutdown();
+#if AUTOLINK_ENABLE_FASTDDS
+    RtpsDispatcher::Instance()->Shutdown();
+    if (participant_ != nullptr) {
+        participant_->Shutdown();
+        participant_.reset();
+    }
+#endif
 }
 
 }  // namespace transport
