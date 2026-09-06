@@ -58,7 +58,8 @@ size_t UnderlayMessage::getMaxCdrSerializedSize(size_t current_alignment) {
             4 + eprosima::fastcdr::Cdr::alignment(current_alignment, 4);
     current_alignment +=
             4 + eprosima::fastcdr::Cdr::alignment(current_alignment, 4);
-    // length-prefixed string with reserved max 255 (+ null)
+    // length-prefixed string with reserved max 255 (+ null) for type size.
+    // Actual payloads use getSerializedSizeProvider at write time.
     current_alignment +=
             4 + eprosima::fastcdr::Cdr::alignment(current_alignment, 4) + 255 +
             1;

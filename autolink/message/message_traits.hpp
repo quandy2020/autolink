@@ -18,6 +18,7 @@
 
 #include <cstring>
 #include <string>
+#include <type_traits>
 #include <typeinfo>
 
 #include "autolink/base/macros.hpp"
@@ -27,6 +28,7 @@
 #include "autolink/message/protobuf_traits.hpp"
 #include "autolink/message/py_message_traits.hpp"
 #include "autolink/message/raw_message_traits.hpp"
+#include "google/protobuf/message.h"
 
 namespace autolink {
 namespace message {
@@ -210,15 +212,30 @@ ParseFromArray(const void* data, int size, T* message) {
     return false;
 }
 
+// Protobuf MessageLite::ParseFromString is overloaded; DEFINE_TYPE_TRAIT cannot
+// take &T::ParseFromString, so use an explicit base-class specialization.
 template <typename T>
-typename std::enable_if<HasParseFromString<T>::value, bool>::type
+typename std::enable_if<
+        std::is_base_of<google::protobuf::Message, T>::value, bool>::type
 ParseFromString(const std::string& str, T* message) {
     return message->ParseFromString(str);
 }
 
 template <typename T>
-typename std::enable_if<!HasParseFromString<T>::value, bool>::type
+typename std::enable_if<!std::is_base_of<google::protobuf::Message, T>::value &&
+                            HasParseFromString<T>::value,
+                        bool>::type
 ParseFromString(const std::string& str, T* message) {
+    return message->ParseFromString(str);
+}
+
+template <typename T>
+typename std::enable_if<!std::is_base_of<google::protobuf::Message, T>::value &&
+                            !HasParseFromString<T>::value,
+                        bool>::type
+ParseFromString(const std::string& str, T* message) {
+    (void)str;
+    (void)message;
     return false;
 }
 
@@ -298,15 +315,30 @@ SerializeToArray(const T& message, void* data, int size) {
     return false;
 }
 
+// Protobuf MessageLite::SerializeToString is overloaded; DEFINE_TYPE_TRAIT
+// cannot take &T::SerializeToString, so use an explicit base-class path.
 template <typename T>
-typename std::enable_if<HasSerializeToString<T>::value, bool>::type
+typename std::enable_if<
+        std::is_base_of<google::protobuf::Message, T>::value, bool>::type
 SerializeToString(const T& message, std::string* str) {
     return message.SerializeToString(str);
 }
 
 template <typename T>
-typename std::enable_if<!HasSerializeToString<T>::value, bool>::type
+typename std::enable_if<!std::is_base_of<google::protobuf::Message, T>::value &&
+                            HasSerializeToString<T>::value,
+                        bool>::type
 SerializeToString(const T& message, std::string* str) {
+    return message.SerializeToString(str);
+}
+
+template <typename T>
+typename std::enable_if<!std::is_base_of<google::protobuf::Message, T>::value &&
+                            !HasSerializeToString<T>::value,
+                        bool>::type
+SerializeToString(const T& message, std::string* str) {
+    (void)message;
+    (void)str;
     return false;
 }
 

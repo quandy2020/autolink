@@ -112,7 +112,8 @@ void RtpsDispatcher::AddSubscriber(const RoleAttributes& self_attr) {
             std::make_shared<RtpsReaderListener>(channel_id, listener_adapter);
 
     new_sub.reader = new_sub.subscriber->create_datareader(
-            new_sub.topic, rqos, new_sub.listener.get());
+            new_sub.topic, rqos, new_sub.listener.get(),
+            eprosima::fastdds::dds::StatusMask::all());
     if (new_sub.reader == nullptr) {
         AERROR << "create_datareader failed for channel "
                << self_attr.channel_name();

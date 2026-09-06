@@ -26,6 +26,10 @@
 namespace autolink {
 namespace transport {
 
+namespace {
+using eprosima::fastdds::dds::DataRepresentationId_t;
+}  // namespace
+
 UnderlayMessageType::UnderlayMessageType() : m_keyBuffer(nullptr) {
     setName("UnderlayMessage");
     m_typeSize = static_cast<uint32_t>(UnderlayMessage::getMaxCdrSerializedSize()) +
@@ -44,6 +48,13 @@ UnderlayMessageType::~UnderlayMessageType() {
 
 bool UnderlayMessageType::serialize(
         void* data, eprosima::fastrtps::rtps::SerializedPayload_t* payload) {
+    return serialize(data, payload,
+                     DataRepresentationId_t::XCDR_DATA_REPRESENTATION);
+}
+
+bool UnderlayMessageType::serialize(
+        void* data, eprosima::fastrtps::rtps::SerializedPayload_t* payload,
+        DataRepresentationId_t data_representation) {
     if (data == nullptr || payload == nullptr) {
         return false;
     }
@@ -53,16 +64,29 @@ bool UnderlayMessageType::serialize(
 #if FASTCDR_VERSION_MAJOR == 1
     eprosima::fastcdr::Cdr ser(fastbuffer, eprosima::fastcdr::Cdr::DEFAULT_ENDIAN,
                                eprosima::fastcdr::Cdr::DDS_CDR);
+    (void)data_representation;
 #else
-    eprosima::fastcdr::Cdr ser(fastbuffer, eprosima::fastcdr::Cdr::DEFAULT_ENDIAN,
-                               eprosima::fastcdr::CdrVersion::XCDRv1);
+    eprosima::fastcdr::Cdr ser(
+            fastbuffer, eprosima::fastcdr::Cdr::DEFAULT_ENDIAN,
+            data_representation == DataRepresentationId_t::XCDR_DATA_REPRESENTATION
+                    ? eprosima::fastcdr::CdrVersion::XCDRv1
+                    : eprosima::fastcdr::CdrVersion::XCDRv2);
 #endif
     payload->encapsulation =
             ser.endianness() == eprosima::fastcdr::Cdr::BIG_ENDIANNESS ? CDR_BE
                                                                       : CDR_LE;
+#if FASTCDR_VERSION_MAJOR > 1
+    ser.set_encoding_flag(
+            data_representation == DataRepresentationId_t::XCDR_DATA_REPRESENTATION
+                    ? eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR
+                    : eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2);
+#endif
     try {
         ser.serialize_encapsulation();
         p_type->serialize(ser);
+#if FASTCDR_VERSION_MAJOR > 1
+        ser.set_dds_cdr_options({0, 0});
+#endif
     } catch (eprosima::fastcdr::exception::Exception&) {
         return false;
     }
@@ -91,6 +115,9 @@ bool UnderlayMessageType::deserialize(
 #endif
     try {
         deser.read_encapsulation();
+#if FASTCDR_VERSION_MAJOR > 1
+        // Prefer encoding from encapsulation; fall back to XCDRv1 PLAIN_CDR.
+#endif
         payload->encapsulation =
                 deser.endianness() == eprosima::fastcdr::Cdr::BIG_ENDIANNESS
                         ? CDR_BE
@@ -104,6 +131,13 @@ bool UnderlayMessageType::deserialize(
 
 std::function<uint32_t()> UnderlayMessageType::getSerializedSizeProvider(
         void* data) {
+    return getSerializedSizeProvider(
+            data, DataRepresentationId_t::XCDR_DATA_REPRESENTATION);
+}
+
+std::function<uint32_t()> UnderlayMessageType::getSerializedSizeProvider(
+        void* data, DataRepresentationId_t data_representation) {
+    (void)data_representation;
     return [data]() -> uint32_t {
         return static_cast<uint32_t>(
                        type::getCdrSerializedSize(

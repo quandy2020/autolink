@@ -1,6 +1,13 @@
 Changelog
 =========
 
+2026-09-06
+----------
+
+- 文档/配置与本机 INTRA+SHM 实现对齐；RTPS 不再静默 fallback SHM。
+- 新增 TopologyBackendFactory（``AUTOLINK_TOPOLOGY_BACKEND``）。
+- 可选 Fast DDS 2.14 RTPS 数据面（``AUTOLINK_ENABLE_FASTDDS``）。
+
 2026-05-20
 ----------
 

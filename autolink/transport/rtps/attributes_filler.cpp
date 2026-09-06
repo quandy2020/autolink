@@ -81,12 +81,22 @@ bool FillHistoryReliabilityDurability(const QosProfile& qos, QosT* out) {
 
 bool AttributesFiller::FillInPubQos(
         const QosProfile& qos, eprosima::fastdds::dds::DataWriterQos* wqos) {
-    return FillHistoryReliabilityDurability(qos, wqos);
+    if (!FillHistoryReliabilityDurability(qos, wqos)) {
+        return false;
+    }
+    wqos->data_sharing().off();
+    wqos->publish_mode().kind =
+            eprosima::fastdds::dds::SYNCHRONOUS_PUBLISH_MODE;
+    return true;
 }
 
 bool AttributesFiller::FillInSubQos(
         const QosProfile& qos, eprosima::fastdds::dds::DataReaderQos* rqos) {
-    return FillHistoryReliabilityDurability(qos, rqos);
+    if (!FillHistoryReliabilityDurability(qos, rqos)) {
+        return false;
+    }
+    rqos->data_sharing().off();
+    return true;
 }
 
 }  // namespace transport

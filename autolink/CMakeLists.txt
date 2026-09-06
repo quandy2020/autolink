@@ -195,6 +195,10 @@ if(AUTOLINK_BUILD_TEST AND GMock_FOUND)
 
   file(GLOB_RECURSE ALL_TESTS "${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp")
   list(FILTER ALL_TESTS EXCLUDE REGEX ".*/integration_test/.*")
+  # RTPS transceiver coverage: builds with AUTOLINK_BUILD_TEST=ON; GTEST_SKIP
+  # when AUTOLINK_ENABLE_FASTDDS=OFF.
+  list(APPEND ALL_TESTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/transport/integration_test/rtps_transceiver_test.cpp")
 
   foreach(ABS_FIL ${ALL_TESTS})
     file(RELATIVE_PATH REL_FIL ${CMAKE_CURRENT_SOURCE_DIR} ${ABS_FIL})

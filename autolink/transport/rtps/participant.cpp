@@ -16,10 +16,15 @@
 
 #include "autolink/transport/rtps/participant.hpp"
 
+#include <memory>
+
+#include "autolink/common/environment.hpp"
+#include "autolink/common/file.hpp"
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
 #include "fastdds/dds/domain/DomainParticipantFactory.hpp"
 #include "fastdds/dds/domain/qos/DomainParticipantQos.hpp"
+#include "fastdds/rtps/transport/UDPv4TransportDescriptor.h"
 #include "fastrtps/types/TypesBase.h"
 #include "fastrtps/utils/IPLocator.h"
 
@@ -57,8 +62,35 @@ bool Participant::Init() {
         return true;
     }
 
+    {
+        // Turn off intraprocess so same-process writer/reader use UDP.
+        // Custom UnderlayMessageType has been observed to match without
+        // on_data_available when INTRAPROCESS_FULL is enabled.
+        std::string xml =
+                common::GetAbsolutePath(common::WorkRoot(), "conf/fastdds_profiles.xml");
+        if (!common::PathExists(xml)) {
+            xml = common::GetAbsolutePath(common::WorkRoot(),
+                                  "autolink/conf/fastdds_profiles.xml");
+        }
+        if (common::PathExists(xml)) {
+            DomainParticipantFactory::get_instance()->load_XML_profiles_file(
+                    xml.c_str());
+        } else {
+            AWARN << "fastdds_profiles.xml not found; intraprocess defaults apply";
+        }
+    }
+
     DomainParticipantQos qos = PARTICIPANT_QOS_DEFAULT;
     qos.name(name_);
+    // Same DomainParticipant writer/reader must match for in-process RTPS.
+    qos.properties().properties().emplace_back("fastdds.ignore_local_endpoints",
+                                               "false");
+    // Prefer UDPv4 only: builtin SharedMem transport can match endpoints on
+    // macOS without delivering user samples to DataReaderListener.
+    qos.transport().use_builtin_transports = false;
+    auto udp_transport =
+            std::make_shared<eprosima::fastdds::rtps::UDPv4TransportDescriptor>();
+    qos.transport().user_transports.push_back(udp_transport);
 
     auto& wire = qos.wire_protocol();
     wire.port.domainIDGain = static_cast<uint16_t>(attr_.domain_id_gain());
@@ -74,6 +106,10 @@ bool Participant::Init() {
     wire.builtin.discovery_config.leaseDuration.seconds = attr_.lease_duration();
     wire.builtin.discovery_config.leaseDuration_announcementperiod.seconds =
             attr_.announcement_period();
+    wire.builtin.discovery_config.initial_announcements.count = 5;
+    wire.builtin.discovery_config.initial_announcements.period.seconds = 0;
+    wire.builtin.discovery_config.initial_announcements.period.nanosec =
+            100000000u;
 
     Locator_t unicast;
     unicast.port = 0;
@@ -84,6 +120,14 @@ bool Participant::Init() {
     }
     wire.default_unicast_locator_list.push_back(unicast);
     wire.builtin.metatrafficUnicastLocatorList.push_back(unicast);
+    // Also advertise loopback for same-host / same-process UDP delivery.
+    if (host_ip_ != "127.0.0.1") {
+        Locator_t loopback;
+        loopback.port = 0;
+        IPLocator::setIPv4(loopback, "127.0.0.1");
+        wire.default_unicast_locator_list.push_back(loopback);
+        wire.builtin.metatrafficUnicastLocatorList.push_back(loopback);
+    }
 
     Locator_t multicast;
     multicast.port = 0;
