@@ -77,4 +77,4 @@ python3 py_record_trans.py /tmp/test_writer.record
 ## Notes
 
 - protobuf 依赖：`pip install -r autolink/python/requirements.txt`；`*_pb2.py` 由 CMake 目标 `autolink_python_pb2` 生成到 `build/python/`。
-- 跨机/容器 discovery 需对齐 `AUTOLINK_DOMAIN_ID` 与网络配置。
+- 默认同进程 INTRA、同机 SHM；拓扑发现为本机文件总线。跨机 Channel 为可选：编译打开 `AUTOLINK_ENABLE_FASTDDS`，配置 `diff_host: RTPS`，双方设置可达 `AUTOLINK_IP` 与相同 `AUTOLINK_DOMAIN_ID`（默认 80）。

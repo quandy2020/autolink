@@ -1,6 +1,7 @@
 # Autolink
 
-本地优先的通信框架：同进程 INTRA、同机 SHM。
+本地优先的通信框架：同进程 INTRA、同机 SHM；拓扑发现默认本机文件总线。
+跨机 Channel 为可选能力（`AUTOLINK_ENABLE_FASTDDS` + `diff_host: RTPS`）。
 提供 Pub/Sub、Service、Action、Parameter、录回放，以及统一 CLI 与 C++/Python API。
 
 ## 构建
