@@ -1,6 +1,13 @@
 Changelog
 =========
 
+2026-09-07
+----------
+
+- M4：``RtpsParticipantHub`` 双 Participant（topology / transport）。
+- M4：``RtpsTopologyBackend`` 跨机 ``ChangeMsg`` 发现（``AUTOLINK_TOPOLOGY_BACKEND=rtps``）；Start 失败回退 local。
+- M4：冒烟测 ``rtps_topology_backend_test``；文档 §14 双机拓扑 / Security 未实现说明。
+
 2026-09-06
 ----------
 
