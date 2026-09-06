@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include "autolink/proto/transport_conf.pb.h"
 #include "autolink/transport/rtps/underlay_message_type.hpp"
@@ -33,14 +34,21 @@ namespace transport {
 class Participant;
 using ParticipantPtr = std::shared_ptr<Participant>;
 
+enum class ParticipantRole {
+    kTopology,
+    kTransport,
+};
+
 /**
- * Owns a Fast DDS 2.14 DomainParticipant for RTPS transport.
+ * Owns a Fast DDS 2.14 DomainParticipant for RTPS transport or topology.
  * Domain id from GlobalData::DomainId(); unicast from HostIp().
+ * Empty discovery_servers keeps SIMPLE discovery; non-empty uses CLIENT.
  */
 class Participant
 {
 public:
-    explicit Participant(const proto::RtpsParticipantAttr& attr);
+    Participant(const proto::RtpsParticipantAttr& attr, ParticipantRole role,
+                const std::vector<std::string>& discovery_servers = {});
     ~Participant();
 
     Participant(const Participant&) = delete;
@@ -54,9 +62,15 @@ public:
         return shutdown_.load();
     }
 
+    ParticipantRole role() const {
+        return role_;
+    }
+
 private:
     std::atomic<bool> shutdown_{false};
     proto::RtpsParticipantAttr attr_;
+    ParticipantRole role_ = ParticipantRole::kTransport;
+    std::vector<std::string> discovery_servers_;
     uint32_t domain_id_ = 80;
     std::string host_ip_;
     std::string name_;

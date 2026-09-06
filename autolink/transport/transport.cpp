@@ -17,6 +17,9 @@
 #include "autolink/transport/transport.hpp"
 
 #include "autolink/common/global_data.hpp"
+#if AUTOLINK_ENABLE_FASTDDS
+#include "autolink/transport/rtps/participant_hub.hpp"
+#endif
 
 namespace autolink {
 namespace transport {
@@ -26,15 +29,14 @@ Transport::Transport() {
     intra_dispatcher_ = IntraDispatcher::Instance();
     shm_dispatcher_ = ShmDispatcher::Instance();
 #if AUTOLINK_ENABLE_FASTDDS
-    participant_ = std::make_shared<Participant>(
-            common::GlobalData::Instance()
-                    ->Config()
-                    .transport_conf()
-                    .participant_attr());
-    if (!participant_->Init()) {
-        AERROR << "RTPS Participant init failed";
-        participant_.reset();
+    auto& hub = RtpsParticipantHub::Instance();
+    if (!hub.Init(common::GlobalData::Instance()
+                          ->Config()
+                          .transport_conf()
+                          .participant_attr())) {
+        AERROR << "RtpsParticipantHub Init failed";
     } else {
+        participant_ = hub.TransportParticipant();
         RtpsDispatcher::Instance()->set_participant(participant_);
     }
 #endif
@@ -54,10 +56,9 @@ void Transport::Shutdown() {
     notifier_->Shutdown();
 #if AUTOLINK_ENABLE_FASTDDS
     RtpsDispatcher::Instance()->Shutdown();
-    if (participant_ != nullptr) {
-        participant_->Shutdown();
-        participant_.reset();
-    }
+    // Hub owns DomainParticipant lifetime; only drop our shared_ptr.
+    participant_.reset();
+    RtpsParticipantHub::Instance().Shutdown();
 #endif
 }
 

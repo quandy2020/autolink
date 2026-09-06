@@ -110,6 +110,7 @@ if(AUTOLINK_HAS_FASTDDS)
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/underlay_message.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/underlay_message_type.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/participant.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/participant_hub.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/attributes_filler.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/dispatcher/rtps_dispatcher.cpp"
   )

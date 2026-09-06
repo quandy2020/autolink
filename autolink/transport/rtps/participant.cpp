@@ -17,11 +17,13 @@
 #include "autolink/transport/rtps/participant.hpp"
 
 #include <memory>
+#include <sstream>
 
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
 #include "fastdds/dds/domain/DomainParticipantFactory.hpp"
 #include "fastdds/dds/domain/qos/DomainParticipantQos.hpp"
+#include "fastdds/rtps/attributes/ServerAttributes.h"
 #include "fastdds/rtps/transport/UDPv4TransportDescriptor.h"
 #include "fastrtps/attributes/LibrarySettingsAttributes.h"
 #include "fastrtps/types/TypesBase.h"
@@ -35,18 +37,26 @@ namespace {
 using eprosima::fastdds::dds::DomainParticipantFactory;
 using eprosima::fastdds::dds::DomainParticipantQos;
 using eprosima::fastdds::dds::PARTICIPANT_QOS_DEFAULT;
+using eprosima::fastdds::rtps::RemoteServerList_t;
+using eprosima::fastdds::rtps::load_environment_server_info;
 using eprosima::fastrtps::rtps::DiscoveryProtocol_t;
 using eprosima::fastrtps::rtps::IPLocator;
 using eprosima::fastrtps::rtps::Locator_t;
 using eprosima::fastrtps::types::ReturnCode_t;
 }  // namespace
 
-Participant::Participant(const proto::RtpsParticipantAttr& attr)
-    : attr_(attr), type_(new UnderlayMessageType()) {
+Participant::Participant(const proto::RtpsParticipantAttr& attr,
+                         ParticipantRole role,
+                         const std::vector<std::string>& discovery_servers)
+    : attr_(attr),
+      role_(role),
+      discovery_servers_(discovery_servers),
+      type_(new UnderlayMessageType()) {
     auto* gd = common::GlobalData::Instance();
     domain_id_ = gd->DomainId();
     host_ip_ = gd->HostIp();
     name_ = gd->HostName() + std::to_string(gd->ProcessId());
+    name_ += (role_ == ParticipantRole::kTopology) ? ":topology" : ":transport";
 }
 
 Participant::~Participant() {
@@ -88,13 +98,6 @@ bool Participant::Init() {
     wire.port.domainIDGain = static_cast<uint16_t>(attr_.domain_id_gain());
     wire.port.portBase = static_cast<uint16_t>(attr_.port_base());
 
-    wire.builtin.discovery_config.discoveryProtocol =
-            DiscoveryProtocol_t::SIMPLE;
-    wire.builtin.discovery_config.use_SIMPLE_EndpointDiscoveryProtocol = true;
-    wire.builtin.discovery_config.m_simpleEDP
-            .use_PublicationReaderANDSubscriptionWriter = true;
-    wire.builtin.discovery_config.m_simpleEDP
-            .use_PublicationWriterANDSubscriptionReader = true;
     wire.builtin.discovery_config.leaseDuration.seconds = attr_.lease_duration();
     wire.builtin.discovery_config.leaseDuration_announcementperiod.seconds =
             attr_.announcement_period();
@@ -102,6 +105,36 @@ bool Participant::Init() {
     wire.builtin.discovery_config.initial_announcements.period.seconds = 0;
     wire.builtin.discovery_config.initial_announcements.period.nanosec =
             100000000u;
+
+    if (discovery_servers_.empty()) {
+        wire.builtin.discovery_config.discoveryProtocol =
+                DiscoveryProtocol_t::SIMPLE;
+        wire.builtin.discovery_config.use_SIMPLE_EndpointDiscoveryProtocol =
+                true;
+        wire.builtin.discovery_config.m_simpleEDP
+                .use_PublicationReaderANDSubscriptionWriter = true;
+        wire.builtin.discovery_config.m_simpleEDP
+                .use_PublicationWriterANDSubscriptionReader = true;
+    } else {
+        // Comma-separated env entries → Fast DDS semicolon list (ROS DS format).
+        std::ostringstream joined;
+        for (size_t i = 0; i < discovery_servers_.size(); ++i) {
+            if (i > 0) {
+                joined << ';';
+            }
+            joined << discovery_servers_[i];
+        }
+        RemoteServerList_t servers;
+        if (!load_environment_server_info(joined.str(), servers) ||
+            servers.empty()) {
+            AERROR << "Participant Init failed: invalid discovery servers="
+                   << joined.str();
+            return false;
+        }
+        wire.builtin.discovery_config.discoveryProtocol =
+                DiscoveryProtocol_t::CLIENT;
+        wire.builtin.discovery_config.m_DiscoveryServers = servers;
+    }
 
     Locator_t unicast;
     unicast.port = 0;
@@ -121,10 +154,12 @@ bool Participant::Init() {
         wire.builtin.metatrafficUnicastLocatorList.push_back(loopback);
     }
 
-    Locator_t multicast;
-    multicast.port = 0;
-    IPLocator::setIPv4(multicast, 239, 255, 0, 1);
-    wire.builtin.metatrafficMulticastLocatorList.push_back(multicast);
+    if (discovery_servers_.empty()) {
+        Locator_t multicast;
+        multicast.port = 0;
+        IPLocator::setIPv4(multicast, 239, 255, 0, 1);
+        wire.builtin.metatrafficMulticastLocatorList.push_back(multicast);
+    }
 
     participant_ = DomainParticipantFactory::get_instance()->create_participant(
             domain_id_, qos);
@@ -145,7 +180,9 @@ bool Participant::Init() {
     }
 
     AINFO << "Participant ready name=" << name_ << " domain=" << domain_id_
-          << " ip=" << host_ip_;
+          << " ip=" << host_ip_
+          << (discovery_servers_.empty() ? " discovery=SIMPLE"
+                                         : " discovery=CLIENT");
     return true;
 }
 
