@@ -24,6 +24,7 @@
 #include "autolink/transport/rtps/attributes_filler.hpp"
 #include "autolink/transport/rtps/message_info_prefix.hpp"
 #include "autolink/transport/rtps/participant.hpp"
+#include "autolink/transport/rtps/payload_limit.hpp"
 #include "autolink/transport/rtps/underlay_message.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
 #include "fastdds/dds/domain/DomainParticipant.hpp"
@@ -187,6 +188,20 @@ bool RtpsTransmitter<M>::Transmit(const M& msg, const MessageInfo& msg_info) {
     UnderlayMessage underlay;
     RETURN_VAL_IF(!message::SerializeToString(msg, &underlay.data()), false);
     RETURN_VAL_IF(!PackMessageInfoPrefix(msg_info, &underlay.data()), false);
+
+    const auto payload_limit = PayloadLimit::FromEnv();
+    const auto check =
+            CheckPayloadSize(underlay.data().size(), payload_limit);
+    if (check == PayloadCheck::kWarn) {
+        AWARN << "RTPS payload exceeds soft limit: size="
+              << underlay.data().size()
+              << " max=" << payload_limit.max_bytes;
+    } else if (check == PayloadCheck::kReject) {
+        AERROR << "RTPS payload rejected (oversize): size="
+               << underlay.data().size()
+               << " max=" << payload_limit.max_bytes;
+        return false;
+    }
 
     underlay.timestamp(
             static_cast<int32_t>(0x0fffffff & msg_info.send_time()));

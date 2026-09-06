@@ -21,6 +21,7 @@
 #include "autolink/transport/qos/qos_profile_conf.hpp"
 #include "autolink/transport/rtps/attributes_filler.hpp"
 #include "autolink/transport/rtps/participant_hub.hpp"
+#include "autolink/transport/rtps/payload_limit.hpp"
 #include "autolink/transport/rtps/underlay_message.hpp"
 #include "fastdds/dds/subscriber/SampleInfo.hpp"
 #include "fastrtps/types/TypesBase.h"
@@ -41,6 +42,9 @@ using eprosima::fastdds::dds::PUBLISHER_QOS_DEFAULT;
 using eprosima::fastdds::dds::SUBSCRIBER_QOS_DEFAULT;
 using eprosima::fastdds::dds::TOPIC_QOS_DEFAULT;
 using transport::AttributesFiller;
+using transport::CheckPayloadSize;
+using transport::PayloadCheck;
+using transport::PayloadLimit;
 using transport::QosProfileConf;
 using transport::RtpsParticipantHub;
 using transport::UnderlayMessage;
@@ -155,6 +159,20 @@ bool RtpsTopologyBackend::Publish(const proto::ChangeMsg& msg) {
     underlay.data(std::move(bytes));
     underlay.timestamp(static_cast<int32_t>(0x0fffffff & msg.timestamp()));
     underlay.seq(0);
+
+    const auto payload_limit = PayloadLimit::FromEnv();
+    const auto check =
+            CheckPayloadSize(underlay.data().size(), payload_limit);
+    if (check == PayloadCheck::kWarn) {
+        AWARN << "RtpsTopologyBackend payload exceeds soft limit: size="
+              << underlay.data().size()
+              << " max=" << payload_limit.max_bytes;
+    } else if (check == PayloadCheck::kReject) {
+        AERROR << "RtpsTopologyBackend payload rejected (oversize): size="
+               << underlay.data().size()
+               << " max=" << payload_limit.max_bytes;
+        return false;
+    }
 
     std::lock_guard<std::mutex> lock(publish_mutex_);
     if (!endpoint->writer->write(&underlay)) {
