@@ -98,9 +98,19 @@ list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/tools/.*")
 list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/mainboard/.*")
 list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/example/.*")
 list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/integration_test/.*")
+# RTPS / Fast DDS sources only when AUTOLINK_HAS_FASTDDS
+list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/transport/rtps/.*")
 
 add_library(autolink SHARED ${AUTOLINK_CORE_SOURCES} ${AUTOLINK_PROTO_SRCS})
 add_dependencies(autolink autolink_protos)
+
+if(AUTOLINK_HAS_FASTDDS)
+  target_sources(autolink PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/underlay_message.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/underlay_message_type.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/participant.cpp"
+  )
+endif()
 
 if(AUTOLINK_BUILD_PYTHON)
   # Channel Writer/Reader templates must live in libautolink, not in the

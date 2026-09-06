@@ -23,7 +23,9 @@
 #include <unistd.h>
 
 #include <cstdlib>
+#include <exception>
 #include <functional>
+#include <string>
 
 #include "autolink/common/environment.hpp"
 #include "autolink/common/file.hpp"
@@ -101,6 +103,10 @@ const std::string& GlobalData::HostName() const {
     return host_name_;
 }
 
+uint32_t GlobalData::DomainId() const {
+    return domain_id_;
+}
+
 void GlobalData::EnableSimulationMode() {
     run_mode_ = RunMode::MODE_SIMULATION;
 }
@@ -168,6 +174,18 @@ void GlobalData::InitHostInfo() {
     char host_name[1024];
     gethostname(host_name, sizeof(host_name));
     host_name_ = host_name;
+
+    domain_id_ = 80;
+    const char* domain_env = getenv("AUTOLINK_DOMAIN_ID");
+    if (domain_env != nullptr) {
+        try {
+            domain_id_ = static_cast<uint32_t>(std::stoul(domain_env));
+        } catch (const std::exception& e) {
+            AERROR << "convert AUTOLINK_DOMAIN_ID error " << e.what()
+                   << ", fallback to 80";
+            domain_id_ = 80;
+        }
+    }
 
     host_ip_ = "127.0.0.1";
 

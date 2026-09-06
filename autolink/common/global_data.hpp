@@ -55,6 +55,8 @@ public:
 
     const std::string& HostName() const;
 
+    uint32_t DomainId() const;
+
     const AutolinkConfig& Config() const;
 
     void EnableSimulationMode();
@@ -96,6 +98,9 @@ private:
     // host info
     std::string host_ip_;
     std::string host_name_;
+
+    // Fast DDS domain (AUTOLINK_DOMAIN_ID, default 80)
+    uint32_t domain_id_ = 80;
 
     // process info
     int process_id_;
