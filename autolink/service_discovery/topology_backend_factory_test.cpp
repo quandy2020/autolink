@@ -18,6 +18,10 @@
 
 #include "gtest/gtest.h"
 
+#if AUTOLINK_ENABLE_FASTDDS
+#include "autolink/service_discovery/rtps_topology_backend.hpp"
+#endif
+
 namespace autolink {
 namespace service_discovery {
 namespace {
@@ -29,7 +33,7 @@ TEST(TopologyBackendFactoryTest, DefaultLocal) {
 }
 
 TEST(TopologyBackendFactoryTest, UnknownFallsBackToLocal) {
-    auto b = TopologyBackendFactory::Create("rtps");
+    auto b = TopologyBackendFactory::Create("unknown_backend");
     ASSERT_NE(b, nullptr);
     EXPECT_TRUE(dynamic_cast<LocalTopologyBackend*>(b.get()) != nullptr);
 }
@@ -37,7 +41,22 @@ TEST(TopologyBackendFactoryTest, UnknownFallsBackToLocal) {
 TEST(TopologyBackendFactoryTest, EmptyFallsBackToLocal) {
     auto b = TopologyBackendFactory::Create("");
     ASSERT_NE(b, nullptr);
+    EXPECT_TRUE(dynamic_cast<LocalTopologyBackend*>(b.get()) != nullptr);
 }
+
+#if AUTOLINK_ENABLE_FASTDDS
+TEST(TopologyBackendFactoryTest, RtpsCreatesRtpsBackend) {
+    auto b = TopologyBackendFactory::Create("rtps");
+    ASSERT_NE(b, nullptr);
+    EXPECT_TRUE(dynamic_cast<RtpsTopologyBackend*>(b.get()) != nullptr);
+}
+#else
+TEST(TopologyBackendFactoryTest, RtpsFallsBackWhenDisabled) {
+    auto b = TopologyBackendFactory::Create("rtps");
+    ASSERT_NE(b, nullptr);
+    EXPECT_TRUE(dynamic_cast<LocalTopologyBackend*>(b.get()) != nullptr);
+}
+#endif
 
 }  // namespace
 }  // namespace service_discovery

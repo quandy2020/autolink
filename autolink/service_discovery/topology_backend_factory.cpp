@@ -17,6 +17,9 @@
 #include "autolink/service_discovery/topology_backend_factory.hpp"
 
 #include "autolink/common/log.hpp"
+#if AUTOLINK_ENABLE_FASTDDS
+#include "autolink/service_discovery/rtps_topology_backend.hpp"
+#endif
 
 namespace autolink {
 namespace service_discovery {
@@ -26,6 +29,15 @@ std::shared_ptr<ITopologyBackend> TopologyBackendFactory::Create(
     std::string key = name.empty() ? "local" : name;
     if (key == "local") {
         return std::make_shared<LocalTopologyBackend>();
+    }
+    if (key == "rtps") {
+#if AUTOLINK_ENABLE_FASTDDS
+        return std::make_shared<RtpsTopologyBackend>();
+#else
+        AERROR << "AUTOLINK_TOPOLOGY_BACKEND=rtps requires "
+                  "AUTOLINK_ENABLE_FASTDDS";
+        return std::make_shared<LocalTopologyBackend>();
+#endif
     }
     AWARN << "Topology backend '" << key
           << "' unavailable; falling back to local file backend.";

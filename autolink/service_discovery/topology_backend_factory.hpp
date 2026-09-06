@@ -27,7 +27,8 @@ namespace service_discovery {
 class TopologyBackendFactory {
 public:
     // "local" → LocalTopologyBackend.
-    // Unknown / "rtps" (not implemented) → warn + LocalTopologyBackend.
+    // "rtps" → RtpsTopologyBackend when AUTOLINK_ENABLE_FASTDDS, else local.
+    // Unknown → warn + LocalTopologyBackend.
     static std::shared_ptr<ITopologyBackend> Create(const std::string& name);
 };
 
