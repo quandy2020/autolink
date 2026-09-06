@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "autolink/proto/transport_conf.pb.h"
-#include "autolink/transport/rtps/underlay_message_type.hpp"
 #include "fastdds/dds/domain/DomainParticipant.hpp"
 #include "fastdds/dds/topic/TypeSupport.hpp"
 
@@ -40,7 +39,7 @@ enum class ParticipantRole {
 };
 
 /**
- * Owns a Fast DDS 2.14 DomainParticipant for RTPS transport or topology.
+ * Owns a Fast DDS 3.x DomainParticipant for RTPS transport or topology.
  * Domain id from GlobalData::DomainId(); unicast from HostIp().
  * Empty discovery_servers keeps SIMPLE discovery; non-empty uses CLIENT.
  */

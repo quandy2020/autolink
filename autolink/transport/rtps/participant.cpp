@@ -24,28 +24,48 @@
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
 #include "autolink/transport/rtps/security_config.hpp"
+// UnderlayMessageType lives in underlay_message_type (Task 3). Keep this TU
+// free of that header so Participant can compile against Fast DDS 3.x first.
+#include "fastdds/LibrarySettings.hpp"
+#include "fastdds/dds/core/ReturnCode.hpp"
 #include "fastdds/dds/domain/DomainParticipantFactory.hpp"
 #include "fastdds/dds/domain/qos/DomainParticipantQos.hpp"
-#include "fastdds/rtps/attributes/ServerAttributes.h"
-#include "fastdds/rtps/transport/UDPv4TransportDescriptor.h"
-#include "fastrtps/attributes/LibrarySettingsAttributes.h"
-#include "fastrtps/types/TypesBase.h"
-#include "fastrtps/utils/IPLocator.h"
-#include "fastrtps/xmlparser/XMLProfileManager.h"
+#include "fastdds/rtps/attributes/RTPSParticipantAttributes.hpp"
+#include "fastdds/rtps/common/Locator.hpp"
+#include "fastdds/rtps/common/LocatorList.hpp"
+#include "fastdds/rtps/transport/UDPv4TransportDescriptor.hpp"
+#include "fastdds/utils/IPLocator.hpp"
+
+namespace eprosima {
+namespace fastdds {
+namespace rtps {
+
+// Exported by libfastdds; public header was removed in 3.x (internal only).
+bool load_environment_server_info(const std::string& list,
+                                  LocatorList& servers_list);
+
+}  // namespace rtps
+}  // namespace fastdds
+}  // namespace eprosima
 
 namespace autolink {
 namespace transport {
 
+// Implemented in underlay_message_type.cpp (Task 3 migration).
+eprosima::fastdds::dds::TypeSupport MakeUnderlayTypeSupport();
+
 namespace {
+using eprosima::fastdds::LibrarySettings;
+using eprosima::fastdds::INTRAPROCESS_FULL;
 using eprosima::fastdds::dds::DomainParticipantFactory;
 using eprosima::fastdds::dds::DomainParticipantQos;
 using eprosima::fastdds::dds::PARTICIPANT_QOS_DEFAULT;
-using eprosima::fastdds::rtps::RemoteServerList_t;
+using eprosima::fastdds::dds::RETCODE_OK;
+using eprosima::fastdds::rtps::DiscoveryProtocol;
+using eprosima::fastdds::rtps::IPLocator;
+using eprosima::fastdds::rtps::LocatorList;
+using eprosima::fastdds::rtps::Locator_t;
 using eprosima::fastdds::rtps::load_environment_server_info;
-using eprosima::fastrtps::rtps::DiscoveryProtocol_t;
-using eprosima::fastrtps::rtps::IPLocator;
-using eprosima::fastrtps::rtps::Locator_t;
-using eprosima::fastrtps::types::ReturnCode_t;
 }  // namespace
 
 Participant::Participant(const proto::RtpsParticipantAttr& attr,
@@ -54,7 +74,7 @@ Participant::Participant(const proto::RtpsParticipantAttr& attr,
     : attr_(attr),
       role_(role),
       discovery_servers_(discovery_servers),
-      type_(new UnderlayMessageType()) {
+      type_(MakeUnderlayTypeSupport()) {
     auto* gd = common::GlobalData::Instance();
     domain_id_ = gd->DomainId();
     host_ip_ = gd->HostIp();
@@ -79,10 +99,9 @@ bool Participant::Init() {
         // Same-process DataWriter/DataReader on one DomainParticipant need
         // intraprocess delivery (library default FULL). Force it explicitly so
         // behavior does not depend on discovering fastdds_profiles.xml.
-        eprosima::fastrtps::LibrarySettingsAttributes ls =
-                eprosima::fastrtps::xmlparser::XMLProfileManager::library_settings();
-        ls.intraprocess_delivery = eprosima::fastrtps::INTRAPROCESS_FULL;
-        eprosima::fastrtps::xmlparser::XMLProfileManager::library_settings(ls);
+        LibrarySettings ls;
+        ls.intraprocess_delivery = INTRAPROCESS_FULL;
+        DomainParticipantFactory::get_instance()->set_library_settings(ls);
     }
 
     DomainParticipantQos qos = PARTICIPANT_QOS_DEFAULT;
@@ -111,7 +130,7 @@ bool Participant::Init() {
 
     if (discovery_servers_.empty()) {
         wire.builtin.discovery_config.discoveryProtocol =
-                DiscoveryProtocol_t::SIMPLE;
+                DiscoveryProtocol::SIMPLE;
         wire.builtin.discovery_config.use_SIMPLE_EndpointDiscoveryProtocol =
                 true;
         wire.builtin.discovery_config.m_simpleEDP
@@ -127,7 +146,7 @@ bool Participant::Init() {
             }
             joined << discovery_servers_[i];
         }
-        RemoteServerList_t servers;
+        LocatorList servers;
         if (!load_environment_server_info(joined.str(), servers) ||
             servers.empty()) {
             AERROR << "Participant Init failed: invalid discovery servers="
@@ -135,7 +154,7 @@ bool Participant::Init() {
             return false;
         }
         wire.builtin.discovery_config.discoveryProtocol =
-                DiscoveryProtocol_t::CLIENT;
+                DiscoveryProtocol::CLIENT;
         wire.builtin.discovery_config.m_DiscoveryServers = servers;
     }
 
@@ -209,7 +228,7 @@ bool Participant::Init() {
         return false;
     }
 
-    if (type_.register_type(participant_) != ReturnCode_t::RETCODE_OK) {
+    if (type_.register_type(participant_) != RETCODE_OK) {
         AERROR << "Participant Init failed: register UnderlayMessage type "
                   "domain="
                << domain_id_ << " ip=" << host_ip_;
