@@ -106,6 +106,11 @@ list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/service_discovery/rtps_topol
 add_library(autolink SHARED ${AUTOLINK_CORE_SOURCES} ${AUTOLINK_PROTO_SRCS})
 add_dependencies(autolink autolink_protos)
 
+# SecurityConfig has no Fast DDS dependency — always build (OFF/ON).
+target_sources(autolink PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/security_config.cpp"
+)
+
 if(AUTOLINK_HAS_FASTDDS)
   target_sources(autolink PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/underlay_message.cpp"
