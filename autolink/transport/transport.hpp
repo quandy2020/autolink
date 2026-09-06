@@ -111,7 +111,8 @@ auto Transport::CreateTransmitter(const RoleAttributes& attr,
             transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
             break;
         case OptionalMode::RTPS:
-            AERROR << "RTPS transport is not available; use HYBRID/INTRA/SHM.";
+            AERROR << "RTPS transport is not available "
+                      "(build with -DAUTOLINK_ENABLE_FASTDDS=ON).";
             return nullptr;
         default:
             transmitter = std::make_shared<ShmTransmitter<M>>(modified_attr);
@@ -154,7 +155,8 @@ auto Transport::CreateReceiver(
                                                         msg_listener);
             break;
         case OptionalMode::RTPS:
-            AERROR << "RTPS transport is not available; use HYBRID/INTRA/SHM.";
+            AERROR << "RTPS transport is not available "
+                      "(build with -DAUTOLINK_ENABLE_FASTDDS=ON).";
             return nullptr;
         default:
             receiver = std::make_shared<ShmReceiver<M>>(modified_attr,

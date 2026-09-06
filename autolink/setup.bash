@@ -31,8 +31,10 @@ pathprepend ${bazel_bin_path}/autolink/python/internal PYTHONPATH
 pathprepend "${PYTHON_INSTALL_PATH}/lib/python${PYTHON_VERSION}/site-packages" PYTHONPATH
 pathprepend "${PYTHON_INSTALL_PATH}/bin/" PATH
 
+# Used by RTPS when AUTOLINK_ENABLE_FASTDDS=ON. Topology backend default is local file.
 export AUTOLINK_DOMAIN_ID=80
 export AUTOLINK_IP=127.0.0.1
+# export AUTOLINK_TOPOLOGY_BACKEND=local
 
 export GLOG_log_dir="${AUTOLINK_ROOT_DIR}/data/log"
 export GLOG_alsologtostderr=0

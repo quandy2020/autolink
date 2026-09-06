@@ -137,8 +137,16 @@ void HybridTransmitter<M>::Enable(const RoleAttributes& opposite_attr) {
 
     uint64_t id = opposite_attr.id();
     std::lock_guard<std::mutex> lock(mutex_);
-    receivers_[mapping_table_[relation]].insert(id);
-    transmitters_[mapping_table_[relation]]->Enable(opposite_attr);
+    const auto mode = mapping_table_[relation];
+    auto it = transmitters_.find(mode);
+    if (it == transmitters_.end() || it->second == nullptr) {
+        AERROR << "HybridTransmitter: no transmitter for mode="
+               << static_cast<int>(mode)
+               << " (RTPS requires -DAUTOLINK_ENABLE_FASTDDS=ON).";
+        return;
+    }
+    receivers_[mode].insert(id);
+    it->second->Enable(opposite_attr);
     TransmitHistoryMsg(opposite_attr);
 }
 
@@ -151,8 +159,16 @@ void HybridTransmitter<M>::Disable(const RoleAttributes& opposite_attr) {
 
     uint64_t id = opposite_attr.id();
     std::lock_guard<std::mutex> lock(mutex_);
-    receivers_[mapping_table_[relation]].erase(id);
-    transmitters_[mapping_table_[relation]]->Disable(opposite_attr);
+    const auto mode = mapping_table_[relation];
+    auto it = transmitters_.find(mode);
+    if (it == transmitters_.end() || it->second == nullptr) {
+        AERROR << "HybridTransmitter: no transmitter for mode="
+               << static_cast<int>(mode)
+               << " (RTPS requires -DAUTOLINK_ENABLE_FASTDDS=ON).";
+        return;
+    }
+    receivers_[mode].erase(id);
+    it->second->Disable(opposite_attr);
 }
 
 template <typename M>
@@ -192,6 +208,9 @@ template <typename M>
 bool HybridTransmitter<M>::AcquireMessage(std::shared_ptr<M>& msg) {
     bool result = false;
     for (auto& item : transmitters_) {
+        if (item.second == nullptr) {
+            continue;
+        }
         result = item.second->AcquireMessage(msg);
         if (result) {
             return true;
@@ -252,10 +271,8 @@ void HybridTransmitter<M>::InitTransmitters() {
                     std::make_shared<ShmTransmitter<M>>(this->attr_);
                 break;
             case OptionalMode::RTPS:
-                AWARN << "HybridTransmitter: RTPS unavailable, "
-                         "falling back to SHM.";
-                transmitters_[mode] =
-                    std::make_shared<ShmTransmitter<M>>(this->attr_);
+                AERROR << "HybridTransmitter: RTPS not available "
+                          "(build with -DAUTOLINK_ENABLE_FASTDDS=ON).";
                 break;
             default:
                 transmitters_[mode] =
@@ -268,7 +285,9 @@ void HybridTransmitter<M>::InitTransmitters() {
 template <typename M>
 void HybridTransmitter<M>::ClearTransmitters() {
     for (auto& item : transmitters_) {
-        item.second->Disable();
+        if (item.second != nullptr) {
+            item.second->Disable();
+        }
     }
     transmitters_.clear();
 }

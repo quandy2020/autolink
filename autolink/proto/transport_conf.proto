@@ -9,7 +9,7 @@ enum OptionalMode {
   HYBRID = 0;
   INTRA = 1;
   SHM = 2;
-  RTPS = 3;  // Reserved; not implemented
+  RTPS = 3;  // Optional; requires AUTOLINK_ENABLE_FASTDDS
 }
 
 message ShmMulticastLocator {
@@ -48,7 +48,7 @@ message RtpsParticipantAttr {
 message CommunicationMode {
   OptionalMode same_proc = 1;  // INTRA SHM
   OptionalMode diff_proc = 2;  // SHM
-  OptionalMode diff_host = 3;  // SHM (same-host only)
+  OptionalMode diff_host = 3;  // Default SHM; set RTPS when FastDDS enabled
 }
 
 message ResourceLimit {

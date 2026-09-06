@@ -6,8 +6,10 @@ export AUTOLINK_PATH="${AUTOLINK_ROOT_DIR}/autolink"
 
 pathprepend "${TOP_DIR}/bin"
 
+# Used by RTPS when AUTOLINK_ENABLE_FASTDDS=ON. Topology backend default is local file.
 export AUTOLINK_DOMAIN_ID=80
 export AUTOLINK_IP=127.0.0.1
+# export AUTOLINK_TOPOLOGY_BACKEND=local
 
 export GLOG_log_dir="${AUTOLINK_ROOT_DIR}/data/log"
 export GLOG_alsologtostderr=0
