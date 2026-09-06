@@ -4,10 +4,13 @@ Changelog
 2026-09-07
 ----------
 
+- M6：opt-in DDS Security（``AUTOLINK_RTPS_SECURITY=1`` + ``AUTOLINK_RTPS_SECURITY_DIR``）；Auth PKI-DH + Crypto AES-GCM-GMAC；Access 仅 allow-all。
+- M6：``SecurityConfig`` 校验证书目录六文件；缺证时 Hub Init fail-loud（不回退明文）；FetchContent Fast DDS ``SECURITY=ON`` + OpenSSL。
+- M6：文档 §14 Security 节（目录约定、签名步骤、双机加密清单）；Permissions 本里程碑非 ACL。
 - M5：Discovery Server CLIENT（``AUTOLINK_DISCOVERY_SERVER``）；``RtpsStats`` 进程内计数；payload 软限；CMake 对 Fast DDS 3.x 发出 WARNING。
 - M4：``RtpsParticipantHub`` 双 Participant（topology / transport）。
 - M4：``RtpsTopologyBackend`` 跨机 ``ChangeMsg`` 发现（``AUTOLINK_TOPOLOGY_BACKEND=rtps``）；Start 失败回退 local。
-- M4：冒烟测 ``rtps_topology_backend_test``；文档 §14 双机拓扑 / Security 未实现说明。
+- M4：冒烟测 ``rtps_topology_backend_test``；文档 §14 双机拓扑说明。
 
 2026-09-06
 ----------
