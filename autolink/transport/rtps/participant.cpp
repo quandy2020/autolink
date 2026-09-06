@@ -16,11 +16,14 @@
 
 #include "autolink/transport/rtps/participant.hpp"
 
+#include <filesystem>
 #include <memory>
 #include <sstream>
+#include <string>
 
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
+#include "autolink/transport/rtps/security_config.hpp"
 #include "fastdds/dds/domain/DomainParticipantFactory.hpp"
 #include "fastdds/dds/domain/qos/DomainParticipantQos.hpp"
 #include "fastdds/rtps/attributes/ServerAttributes.h"
@@ -159,6 +162,43 @@ bool Participant::Init() {
         multicast.port = 0;
         IPLocator::setIPv4(multicast, 239, 255, 0, 1);
         wire.builtin.metatrafficMulticastLocatorList.push_back(multicast);
+    }
+
+    {
+        auto sec = SecurityConfig::FromEnv();
+        if (sec.enabled) {
+            auto file_uri = [](const std::string& path) {
+                namespace fs = std::filesystem;
+                std::error_code ec;
+                const fs::path abs = fs::absolute(path, ec);
+                const std::string resolved =
+                        ec ? path : abs.lexically_normal().string();
+                return std::string("file://") + resolved;
+            };
+            auto& props = qos.properties().properties();
+            props.emplace_back("dds.sec.auth.plugin", "builtin.PKI-DH");
+            props.emplace_back(
+                    "dds.sec.auth.builtin.PKI-DH.identity_ca",
+                    file_uri(sec.Path(SecurityConfig::kIdentityCa)));
+            props.emplace_back(
+                    "dds.sec.auth.builtin.PKI-DH.identity_certificate",
+                    file_uri(sec.Path(SecurityConfig::kCert)));
+            props.emplace_back("dds.sec.auth.builtin.PKI-DH.private_key",
+                               file_uri(sec.Path(SecurityConfig::kKey)));
+            props.emplace_back("dds.sec.access.plugin",
+                               "builtin.Access-Permissions");
+            props.emplace_back(
+                    "dds.sec.access.builtin.Access-Permissions.permissions_ca",
+                    file_uri(sec.Path(SecurityConfig::kPermissionsCa)));
+            props.emplace_back(
+                    "dds.sec.access.builtin.Access-Permissions.governance",
+                    file_uri(sec.Path(SecurityConfig::kGovernance)));
+            props.emplace_back(
+                    "dds.sec.access.builtin.Access-Permissions.permissions",
+                    file_uri(sec.Path(SecurityConfig::kPermissions)));
+            props.emplace_back("dds.sec.crypto.plugin",
+                               "builtin.AES-GCM-GMAC");
+        }
     }
 
     participant_ = DomainParticipantFactory::get_instance()->create_participant(

@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "autolink/common/log.hpp"
+#include "autolink/transport/rtps/security_config.hpp"
 
 namespace autolink {
 namespace transport {
@@ -64,6 +65,13 @@ bool RtpsParticipantHub::Init(const proto::RtpsParticipantAttr& attr) {
     std::lock_guard<std::mutex> lk(mutex_);
     if (inited_) {
         return true;
+    }
+
+    auto sec = SecurityConfig::FromEnv();
+    std::string err;
+    if (!sec.Validate(&err)) {
+        AERROR << "RTPS Security config invalid: " << err;
+        return false;
     }
 
     const auto servers = ParseDiscoveryServers();
