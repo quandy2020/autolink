@@ -25,10 +25,12 @@
 #include "autolink/transport/rtps/message_info_prefix.hpp"
 #include "autolink/transport/rtps/participant.hpp"
 #include "autolink/transport/rtps/payload_limit.hpp"
+#include "autolink/transport/rtps/rtps_stats.hpp"
 #include "autolink/transport/rtps/underlay_message.hpp"
 #include "autolink/transport/transmitter/transmitter.hpp"
 #include "fastdds/dds/domain/DomainParticipant.hpp"
 #include "fastdds/dds/publisher/DataWriter.hpp"
+#include "fastdds/dds/publisher/DataWriterListener.hpp"
 #include "fastdds/dds/publisher/Publisher.hpp"
 #include "fastdds/dds/publisher/qos/DataWriterQos.hpp"
 #include "fastdds/dds/publisher/qos/PublisherQos.hpp"
@@ -38,6 +40,16 @@
 
 namespace autolink {
 namespace transport {
+
+class RtpsWriterListener : public eprosima::fastdds::dds::DataWriterListener {
+public:
+    void on_publication_matched(
+            eprosima::fastdds::dds::DataWriter* /*writer*/,
+            const eprosima::fastdds::dds::PublicationMatchedStatus& info)
+            override {
+        RtpsStats::Instance().SetMatchedReaders(info.current_count);
+    }
+};
 
 template <typename M>
 class RtpsTransmitter : public Transmitter<M>
@@ -70,6 +82,7 @@ private:
     eprosima::fastdds::dds::Publisher* publisher_;
     eprosima::fastdds::dds::Topic* topic_;
     eprosima::fastdds::dds::DataWriter* writer_;
+    std::shared_ptr<RtpsWriterListener> writer_listener_;
 };
 
 template <typename M>
@@ -85,7 +98,8 @@ RtpsTransmitter<M>::RtpsTransmitter(const RoleAttributes& attr,
       participant_(participant),
       publisher_(nullptr),
       topic_(nullptr),
-      writer_(nullptr) {}
+      writer_(nullptr),
+      writer_listener_(std::make_shared<RtpsWriterListener>()) {}
 
 template <typename M>
 RtpsTransmitter<M>::~RtpsTransmitter() {
@@ -138,7 +152,9 @@ void RtpsTransmitter<M>::Enable() {
             eprosima::fastdds::dds::DATAWRITER_QOS_DEFAULT;
     RETURN_IF(!AttributesFiller::FillInPubQos(this->attr_.qos_profile(), &wqos));
 
-    writer_ = publisher_->create_datawriter(topic_, wqos);
+    writer_ = publisher_->create_datawriter(
+            topic_, wqos, writer_listener_.get(),
+            eprosima::fastdds::dds::StatusMask::all());
     RETURN_IF_NULL(writer_);
 
     this->enabled_ = true;
@@ -165,6 +181,7 @@ void RtpsTransmitter<M>::Disable() {
     writer_ = nullptr;
     publisher_ = nullptr;
     topic_ = nullptr;
+    // writer_listener_ kept for reuse on next Enable().
     this->enabled_ = false;
 }
 
@@ -200,6 +217,7 @@ bool RtpsTransmitter<M>::Transmit(const M& msg, const MessageInfo& msg_info) {
         AERROR << "RTPS payload rejected (oversize): size="
                << underlay.data().size()
                << " max=" << payload_limit.max_bytes;
+        RtpsStats::Instance().AddOversize();
         return false;
     }
 
@@ -208,7 +226,12 @@ bool RtpsTransmitter<M>::Transmit(const M& msg, const MessageInfo& msg_info) {
     underlay.seq(msg_info.msg_seq_num());
 
     // DataWriter::write(void*) returns bool (true on success).
-    return writer_->write(&underlay);
+    if (writer_->write(&underlay)) {
+        RtpsStats::Instance().AddSent();
+        return true;
+    }
+    RtpsStats::Instance().AddWriteFail();
+    return false;
 }
 
 }  // namespace transport

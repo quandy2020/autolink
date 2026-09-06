@@ -29,6 +29,7 @@
 #include "autolink/transport/rtps/attributes_filler.hpp"
 #include "autolink/transport/rtps/message_info_prefix.hpp"
 #include "autolink/transport/rtps/participant.hpp"
+#include "autolink/transport/rtps/rtps_stats.hpp"
 #include "autolink/transport/rtps/underlay_message.hpp"
 #include "fastdds/dds/domain/DomainParticipant.hpp"
 #include "fastdds/dds/subscriber/DataReader.hpp"
@@ -141,8 +142,16 @@ public:
             }
             msg_info.set_msg_seq_num(sample.seq());
             msg_info.set_send_time(static_cast<uint64_t>(sample.timestamp()));
+            RtpsStats::Instance().AddRecv();
             callback_(channel_id_, payload, msg_info);
         }
+    }
+
+    void on_subscription_matched(
+            eprosima::fastdds::dds::DataReader* /*reader*/,
+            const eprosima::fastdds::dds::SubscriptionMatchedStatus& info)
+            override {
+        RtpsStats::Instance().SetMatchedWriters(info.current_count);
     }
 
 private:

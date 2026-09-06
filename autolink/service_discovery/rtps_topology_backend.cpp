@@ -22,6 +22,7 @@
 #include "autolink/transport/rtps/attributes_filler.hpp"
 #include "autolink/transport/rtps/participant_hub.hpp"
 #include "autolink/transport/rtps/payload_limit.hpp"
+#include "autolink/transport/rtps/rtps_stats.hpp"
 #include "autolink/transport/rtps/underlay_message.hpp"
 #include "fastdds/dds/subscriber/SampleInfo.hpp"
 #include "fastrtps/types/TypesBase.h"
@@ -47,6 +48,7 @@ using transport::PayloadCheck;
 using transport::PayloadLimit;
 using transport::QosProfileConf;
 using transport::RtpsParticipantHub;
+using transport::RtpsStats;
 using transport::UnderlayMessage;
 
 }  // namespace
@@ -72,6 +74,7 @@ public:
                 continue;
             }
             backend_->OnUnderlaySample(sample.datatype(), sample.data());
+            RtpsStats::Instance().AddRecv();
         }
     }
 
@@ -171,6 +174,7 @@ bool RtpsTopologyBackend::Publish(const proto::ChangeMsg& msg) {
         AERROR << "RtpsTopologyBackend payload rejected (oversize): size="
                << underlay.data().size()
                << " max=" << payload_limit.max_bytes;
+        RtpsStats::Instance().AddOversize();
         return false;
     }
 
@@ -178,8 +182,10 @@ bool RtpsTopologyBackend::Publish(const proto::ChangeMsg& msg) {
     if (!endpoint->writer->write(&underlay)) {
         AERROR << "RtpsTopologyBackend: DataWriter::write failed topic="
                << endpoint->topic_name;
+        RtpsStats::Instance().AddWriteFail();
         return false;
     }
+    RtpsStats::Instance().AddSent();
     return true;
 }
 

@@ -30,6 +30,32 @@ set(AUTOLINK_FASTDDS_LINK_LIBS "")
 # Latest 2.14.x tag used when FetchContent is required.
 set(AUTOLINK_FASTDDS_GIT_TAG "v2.14.6")
 
+# Soft-probe installed major without importing CMake targets (avoids clashing
+# with FetchContent 2.14 when only 3.x is on the prefix path).
+function(autolink_warn_if_fastdds_3x_installed)
+  set(_probe_roots
+      ${CMAKE_PREFIX_PATH}
+      "/opt/homebrew/lib/cmake"
+      "/usr/local/lib/cmake"
+      "/usr/lib/cmake"
+      "/usr/lib64/cmake")
+  foreach(_root IN LISTS _probe_roots)
+    foreach(_pkg IN ITEMS fastdds fastrtps)
+      set(_verfile "${_root}/${_pkg}/${_pkg}ConfigVersion.cmake")
+      if(EXISTS "${_verfile}")
+        set(PACKAGE_VERSION "")
+        include("${_verfile}")
+        if(PACKAGE_VERSION VERSION_GREATER_EQUAL "3.0")
+          message(WARNING
+            "Autolink RTPS validated on Fast DDS 2.14; 3.x is untested "
+            "(found ${PACKAGE_VERSION} at ${_verfile})")
+        endif()
+        return()
+      endif()
+    endforeach()
+  endforeach()
+endfunction()
+
 if(AUTOLINK_ENABLE_FASTDDS)
   find_package(fastdds 2.14 QUIET)
   if(fastdds_FOUND)
@@ -37,6 +63,10 @@ if(AUTOLINK_ENABLE_FASTDDS)
     set(AUTOLINK_FASTDDS_LINK_LIBS fastdds fastcdr)
     message(STATUS "autolink: using Fast DDS via find_package(fastdds) "
                    "(${fastdds_VERSION})")
+    if(fastdds_VERSION VERSION_GREATER_EQUAL "3.0")
+      message(WARNING
+        "Autolink RTPS validated on Fast DDS 2.14; 3.x is untested")
+    endif()
   else()
     find_package(fastrtps 2.14 QUIET)
     if(fastrtps_FOUND)
@@ -44,7 +74,12 @@ if(AUTOLINK_ENABLE_FASTDDS)
       set(AUTOLINK_FASTDDS_LINK_LIBS fastrtps fastcdr)
       message(STATUS "autolink: using Fast DDS 2.14 via find_package(fastrtps) "
                      "(${fastrtps_VERSION}; 2.x CMake package name)")
+      if(fastrtps_VERSION VERSION_GREATER_EQUAL "3.0")
+        message(WARNING
+          "Autolink RTPS validated on Fast DDS 2.14; 3.x is untested")
+      endif()
     else()
+      autolink_warn_if_fastdds_3x_installed()
       message(STATUS "autolink: fastdds/fastrtps 2.14 not found; "
                      "FetchContent Fast-DDS ${AUTOLINK_FASTDDS_GIT_TAG}")
       include(FetchContent)
