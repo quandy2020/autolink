@@ -18,15 +18,15 @@
 
 #include <memory>
 
-#include "autolink/common/environment.hpp"
-#include "autolink/common/file.hpp"
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
 #include "fastdds/dds/domain/DomainParticipantFactory.hpp"
 #include "fastdds/dds/domain/qos/DomainParticipantQos.hpp"
 #include "fastdds/rtps/transport/UDPv4TransportDescriptor.h"
+#include "fastrtps/attributes/LibrarySettingsAttributes.h"
 #include "fastrtps/types/TypesBase.h"
 #include "fastrtps/utils/IPLocator.h"
+#include "fastrtps/xmlparser/XMLProfileManager.h"
 
 namespace autolink {
 namespace transport {
@@ -63,21 +63,13 @@ bool Participant::Init() {
     }
 
     {
-        // Turn off intraprocess so same-process writer/reader use UDP.
-        // Custom UnderlayMessageType has been observed to match without
-        // on_data_available when INTRAPROCESS_FULL is enabled.
-        std::string xml =
-                common::GetAbsolutePath(common::WorkRoot(), "conf/fastdds_profiles.xml");
-        if (!common::PathExists(xml)) {
-            xml = common::GetAbsolutePath(common::WorkRoot(),
-                                  "autolink/conf/fastdds_profiles.xml");
-        }
-        if (common::PathExists(xml)) {
-            DomainParticipantFactory::get_instance()->load_XML_profiles_file(
-                    xml.c_str());
-        } else {
-            AWARN << "fastdds_profiles.xml not found; intraprocess defaults apply";
-        }
+        // Same-process DataWriter/DataReader on one DomainParticipant need
+        // intraprocess delivery (library default FULL). Force it explicitly so
+        // behavior does not depend on discovering fastdds_profiles.xml.
+        eprosima::fastrtps::LibrarySettingsAttributes ls =
+                eprosima::fastrtps::xmlparser::XMLProfileManager::library_settings();
+        ls.intraprocess_delivery = eprosima::fastrtps::INTRAPROCESS_FULL;
+        eprosima::fastrtps::xmlparser::XMLProfileManager::library_settings(ls);
     }
 
     DomainParticipantQos qos = PARTICIPANT_QOS_DEFAULT;

@@ -91,7 +91,17 @@ size_t UnderlayMessage::getCdrSerializedSize(const UnderlayMessage& data,
 void UnderlayMessage::serialize(eprosima::fastcdr::Cdr& scdr) const {
     scdr << m_timestamp;
     scdr << m_seq;
-    scdr << m_data;
+    // FastCDR 2 rejects operator<<(std::string) when the payload embeds NULs
+    // (24B MessageInfo prefix is binary). Encode as a CDR string by size:
+    // uint32 length (including trailing NUL) + bytes + NUL.
+    const uint32_t cdr_str_len =
+            static_cast<uint32_t>(m_data.size()) + 1u;
+    scdr << cdr_str_len;
+    if (!m_data.empty()) {
+        scdr.serialize_array(m_data.data(), m_data.size());
+    }
+    const char nul = '\0';
+    scdr.serialize_array(&nul, 1u);
     scdr << m_datatype;
 }
 

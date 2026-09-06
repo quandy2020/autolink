@@ -192,8 +192,8 @@ bool RtpsTransmitter<M>::Transmit(const M& msg, const MessageInfo& msg_info) {
             static_cast<int32_t>(0x0fffffff & msg_info.send_time()));
     underlay.seq(msg_info.msg_seq_num());
 
-    return writer_->write(&underlay) ==
-           eprosima::fastrtps::types::ReturnCode_t::RETCODE_OK;
+    // DataWriter::write(void*) returns bool (true on success).
+    return writer_->write(&underlay);
 }
 
 }  // namespace transport
