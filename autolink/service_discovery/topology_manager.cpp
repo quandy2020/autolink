@@ -109,13 +109,34 @@ bool TopologyManager::Init() {
     }
 
     if (!backend_->Start()) {
-        AERROR << "start topology backend failed.";
-        init_.store(false);
-        return false;
+        AERROR << "start topology backend failed"
+               << (backend_name == "rtps"
+                       ? "; falling back to local file backend."
+                       : ".");
+        if (backend_name != "rtps") {
+            init_.store(false);
+            return false;
+        }
+        // Spec: BACKEND=rtps Init/Start failure → AERROR + local fallback so
+        // the process can still start (same-host discovery only).
+        node_manager_->StopDiscovery();
+        channel_manager_->StopDiscovery();
+        service_manager_->StopDiscovery();
+        backend_->Shutdown();
+        backend_ = TopologyBackendFactory::Create("local");
+        Manager::SetTopologyBackend(backend_.get());
+        if (!InitNodeManager() || !InitChannelManager() ||
+            !InitServiceManager() || !backend_->Start()) {
+            AERROR << "local topology backend fallback failed.";
+            init_.store(false);
+            return false;
+        }
+        AINFO << "TopologyManager using backend=local (rtps fallback)"
+              << " host_ip=" << host_ip;
+    } else {
+        AINFO << "TopologyManager using backend=" << backend_name
+              << " host_ip=" << host_ip;
     }
-
-    AINFO << "TopologyManager using backend=" << backend_name
-          << " host_ip=" << host_ip;
 
     // When a remote node appears, re-announce local channel/service roles.
     node_change_conn_ = node_manager_->AddChangeListener(
