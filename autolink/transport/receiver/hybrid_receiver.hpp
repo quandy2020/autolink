@@ -158,9 +158,6 @@ void HybridReceiver<M>::Disable(const RoleAttributes& opposite_attr) {
     const auto mode = mapping_table_[relation];
     auto it = receivers_.find(mode);
     if (it == receivers_.end() || it->second == nullptr) {
-        AERROR << "HybridReceiver: no receiver for mode="
-               << static_cast<int>(mode)
-               << " (RTPS requires -DAUTOLINK_ENABLE_FASTDDS=ON).";
         return;
     }
     if (transmitters_[mode].count(id) > 0) {
