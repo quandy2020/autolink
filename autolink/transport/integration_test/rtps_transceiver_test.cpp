@@ -98,13 +98,11 @@ TEST(RtpsTransceiverTest, PubSub) {
         }
     }
     EXPECT_TRUE(transmitted_ok);
-    if (received.load() < 1) {
-        // Same DomainParticipant PubSub can match without delivering samples
-        // for custom TopicDataType on some hosts; dual-host checklist in §14
-        // remains the supported validation path.
-        GTEST_SKIP() << "RTPS write OK but same-process callback not observed "
-                        "within 2s; use dual-host checklist";
-    }
+    // Dual-host checklist in §14 remains the primary production validation
+    // path; this same-process PubSub still must observe the receive callback.
+    ASSERT_GE(received.load(), 1)
+            << "RTPS Transmit succeeded but same-process callback not observed "
+               "within 2s";
     EXPECT_EQ(got.class_name(), "RtpsTransceiverTest");
     EXPECT_EQ(got.case_name(), "PubSub");
 
