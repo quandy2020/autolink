@@ -67,6 +67,10 @@ if(AUTOLINK_ENABLE_FASTDDS)
       message(WARNING
         "Autolink RTPS validated on Fast DDS 2.14; 3.x is untested")
     endif()
+    message(WARNING
+      "autolink: system Fast DDS may have been built without SECURITY; "
+      "DDS Security plugins will fail at runtime if missing. Prefer "
+      "FetchContent with SECURITY=ON or a security-enabled package.")
   else()
     find_package(fastrtps 2.14 QUIET)
     if(fastrtps_FOUND)
@@ -78,10 +82,28 @@ if(AUTOLINK_ENABLE_FASTDDS)
         message(WARNING
           "Autolink RTPS validated on Fast DDS 2.14; 3.x is untested")
       endif()
+      message(WARNING
+        "autolink: system Fast DDS may have been built without SECURITY; "
+        "DDS Security plugins will fail at runtime if missing. Prefer "
+        "FetchContent with SECURITY=ON or a security-enabled package.")
     else()
       autolink_warn_if_fastdds_3x_installed()
       message(STATUS "autolink: fastdds/fastrtps 2.14 not found; "
                      "FetchContent Fast-DDS ${AUTOLINK_FASTDDS_GIT_TAG}")
+
+      # DDS Security requires OpenSSL when building Fast DDS via FetchContent.
+      find_package(OpenSSL QUIET)
+      if(NOT OpenSSL_FOUND)
+        message(FATAL_ERROR
+          "autolink: AUTOLINK_ENABLE_FASTDDS=ON requires OpenSSL to build "
+          "Fast DDS with SECURITY=ON.\n"
+          "  macOS: brew install openssl && export OPENSSL_ROOT_DIR="
+          "\"$(brew --prefix openssl)\"\n"
+          "  Then re-run cmake, or pass -DOPENSSL_ROOT_DIR=...")
+      endif()
+      message(STATUS "autolink: OpenSSL ${OPENSSL_VERSION} "
+                     "(${OPENSSL_INCLUDE_DIR})")
+
       include(FetchContent)
       # Pull Fast-CDR / foonathan_memory / Asio from Fast-DDS thirdparty/
       # when missing on the host.
@@ -90,6 +112,7 @@ if(AUTOLINK_ENABLE_FASTDDS)
       set(COMPILE_TOOLS OFF CACHE BOOL "" FORCE)
       set(BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
       set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+      set(SECURITY ON CACHE BOOL "Enable Fast DDS Security" FORCE)
       FetchContent_Declare(
         fastdds
         GIT_REPOSITORY https://github.com/eProsima/Fast-DDS.git
@@ -99,7 +122,8 @@ if(AUTOLINK_ENABLE_FASTDDS)
       FetchContent_MakeAvailable(fastdds)
       set(AUTOLINK_HAS_FASTDDS ON)
       set(AUTOLINK_FASTDDS_LINK_LIBS fastrtps fastcdr)
-      message(STATUS "autolink: Fast DDS ${AUTOLINK_FASTDDS_GIT_TAG} via FetchContent")
+      message(STATUS "autolink: Fast DDS ${AUTOLINK_FASTDDS_GIT_TAG} via "
+                     "FetchContent (SECURITY=ON)")
     endif()
   endif()
 endif()
