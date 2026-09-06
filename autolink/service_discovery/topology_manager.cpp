@@ -16,8 +16,11 @@
 
 #include "autolink/service_discovery/topology_manager.hpp"
 
+#include <cstdlib>
+
 #include "autolink/common/global_data.hpp"
 #include "autolink/common/log.hpp"
+#include "autolink/service_discovery/topology_backend_factory.hpp"
 
 namespace autolink {
 namespace service_discovery {
@@ -81,7 +84,10 @@ bool TopologyManager::Init() {
     service_manager_ = std::make_shared<ServiceManager>();
 
     const std::string host_ip = common::GlobalData::Instance()->HostIp();
-    backend_ = std::make_unique<LocalTopologyBackend>();
+    const char* backend_env = std::getenv("AUTOLINK_TOPOLOGY_BACKEND");
+    const std::string backend_name =
+        backend_env == nullptr ? "local" : std::string(backend_env);
+    backend_ = TopologyBackendFactory::Create(backend_name);
 
     // Subscribe managers BEFORE Start so TRANSIENT_LOCAL topology history is
     // not taken and dropped with zero subscribers.
@@ -103,12 +109,13 @@ bool TopologyManager::Init() {
     }
 
     if (!backend_->Start()) {
-        AERROR << "start LocalTopologyBackend failed.";
+        AERROR << "start topology backend failed.";
         init_.store(false);
         return false;
     }
 
-    AINFO << "TopologyManager using LocalTopologyBackend host_ip=" << host_ip;
+    AINFO << "TopologyManager using backend=" << backend_name
+          << " host_ip=" << host_ip;
 
     // When a remote node appears, re-announce local channel/service roles.
     node_change_conn_ = node_manager_->AddChangeListener(

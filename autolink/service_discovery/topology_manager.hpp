@@ -121,7 +121,7 @@ private:
     NodeManagerPtr node_manager_;        /// shared ptr of NodeManager
     ChannelManagerPtr channel_manager_;  /// shared ptr of ChannelManager
     ServiceManagerPtr service_manager_;  /// shared ptr of ServiceManager
-    std::unique_ptr<ITopologyBackend> backend_;
+    std::shared_ptr<ITopologyBackend> backend_;
     ChangeSignal change_signal_;           /// topology changing signal,
                                            ///< connect to `ChangeFunc`s
     ChangeConnection node_change_conn_;
