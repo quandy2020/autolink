@@ -150,6 +150,9 @@ elseif(UNIX)
   target_link_libraries(autolink PUBLIC atomic dl)
 endif()
 
+# Fast DDS RTPS: PUBLIC AUTOLINK_ENABLE_FASTDDS=0|1 (+ fastdds/fastrtps link when ON)
+autolink_apply_fastdds(autolink)
+
 # 可执行程序：mainboard（始终构建）
 add_executable(autolink_mainboard
     mainboard/mainboard.cpp

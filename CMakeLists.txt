@@ -31,6 +31,7 @@ option(AUTOLINK_BUILD_TEST "Build unit tests" ON)
 option(AUTOLINK_BUILD_EXAMPLES "Build examples" ON)
 option(AUTOLINK_BUILD_PYTHON "Build Python bindings" ON)
 option(AUTOLINK_BUILD_DOCS "Build documentation" ON)
+option(AUTOLINK_ENABLE_FASTDDS "Build RTPS transport with Fast DDS 2.14" OFF)
 
 # output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -45,6 +46,9 @@ include_directories(${AUTOLINK_ROOT_DIR})
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/functions.cmake")
 google_initialize_autonomy_project()
+
+# Optional Fast DDS 2.14 (sets AUTOLINK_HAS_FASTDDS; linking applied on target)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FastDDS.cmake")
 
 if(AUTOLINK_BUILD_TEST)
   enable_testing()
