@@ -29,7 +29,7 @@ using proto::QosProfile;
 using proto::QosReliabilityPolicy;
 
 /**
- * Maps autolink QosProfile onto Fast DDS 2.14 DataWriter/DataReader QoS.
+ * Maps autolink QosProfile onto Fast DDS 3.x DataWriter/DataReader QoS.
  * Covers History (kind + depth), Reliability, Durability.
  */
 class AttributesFiller
