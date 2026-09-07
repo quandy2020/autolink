@@ -35,8 +35,8 @@
 #include "fastdds/dds/publisher/qos/DataWriterQos.hpp"
 #include "fastdds/dds/publisher/qos/PublisherQos.hpp"
 #include "fastdds/dds/topic/Topic.hpp"
+#include "fastdds/dds/core/ReturnCode.hpp"
 #include "fastdds/dds/topic/qos/TopicQos.hpp"
-#include "fastrtps/types/TypesBase.h"
 
 namespace autolink {
 namespace transport {
@@ -225,8 +225,8 @@ bool RtpsTransmitter<M>::Transmit(const M& msg, const MessageInfo& msg_info) {
             static_cast<int32_t>(0x0fffffff & msg_info.send_time()));
     underlay.seq(msg_info.msg_seq_num());
 
-    // DataWriter::write(void*) returns bool (true on success).
-    if (writer_->write(&underlay)) {
+    // Fast DDS 3.x: write returns ReturnCode_t (RETCODE_OK == 0).
+    if (writer_->write(&underlay) == eprosima::fastdds::dds::RETCODE_OK) {
         RtpsStats::Instance().AddSent();
         return true;
     }

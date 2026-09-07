@@ -24,8 +24,8 @@
 #include "autolink/transport/rtps/payload_limit.hpp"
 #include "autolink/transport/rtps/rtps_stats.hpp"
 #include "autolink/transport/rtps/underlay_message.hpp"
+#include "fastdds/dds/core/ReturnCode.hpp"
 #include "fastdds/dds/subscriber/SampleInfo.hpp"
-#include "fastrtps/types/TypesBase.h"
 
 namespace autolink {
 namespace service_discovery {
@@ -69,7 +69,7 @@ public:
         UnderlayMessage sample;
         eprosima::fastdds::dds::SampleInfo info;
         while (reader->take_next_sample(&sample, &info) ==
-               eprosima::fastrtps::types::ReturnCode_t::RETCODE_OK) {
+               eprosima::fastdds::dds::RETCODE_OK) {
             if (!info.valid_data) {
                 continue;
             }
@@ -179,7 +179,8 @@ bool RtpsTopologyBackend::Publish(const proto::ChangeMsg& msg) {
     }
 
     std::lock_guard<std::mutex> lock(publish_mutex_);
-    if (!endpoint->writer->write(&underlay)) {
+    if (endpoint->writer->write(&underlay) !=
+        eprosima::fastdds::dds::RETCODE_OK) {
         AERROR << "RtpsTopologyBackend: DataWriter::write failed topic="
                << endpoint->topic_name;
         RtpsStats::Instance().AddWriteFail();

@@ -40,8 +40,8 @@
 #include "fastdds/dds/subscriber/qos/SubscriberQos.hpp"
 #include "fastdds/dds/topic/Topic.hpp"
 #include "fastdds/dds/topic/TypeSupport.hpp"
+#include "fastdds/dds/core/ReturnCode.hpp"
 #include "fastdds/dds/topic/qos/TopicQos.hpp"
-#include "fastrtps/types/TypesBase.h"
 
 namespace autolink {
 namespace transport {
@@ -127,7 +127,7 @@ public:
         UnderlayMessage sample;
         eprosima::fastdds::dds::SampleInfo info;
         while (reader->take_next_sample(&sample, &info) ==
-               eprosima::fastrtps::types::ReturnCode_t::RETCODE_OK) {
+               eprosima::fastdds::dds::RETCODE_OK) {
             if (!info.valid_data) {
                 continue;
             }

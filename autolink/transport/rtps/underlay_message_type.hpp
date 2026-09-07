@@ -16,20 +16,18 @@
 
 #pragma once
 
-#include <functional>
-
 #include "autolink/transport/rtps/underlay_message.hpp"
 #include "fastdds/dds/topic/TopicDataType.hpp"
-#include "fastrtps/rtps/common/InstanceHandle.h"
-#include "fastrtps/rtps/common/SerializedPayload.h"
-#include "fastrtps/utils/md5.h"
+#include "fastdds/dds/topic/TypeSupport.hpp"
+#include "fastdds/rtps/common/InstanceHandle.hpp"
+#include "fastdds/rtps/common/SerializedPayload.hpp"
+#include "fastdds/utils/md5.hpp"
 
 namespace autolink {
 namespace transport {
 
 /**
- * TopicDataType / TypeSupport for UnderlayMessage (Fast DDS 2.14).
- * SerializedPayload lives under the historical fastrtps namespace.
+ * TopicDataType / TypeSupport for UnderlayMessage (Fast DDS 3.x).
  */
 class UnderlayMessageType : public eprosima::fastdds::dds::TopicDataType
 {
@@ -39,27 +37,32 @@ public:
     UnderlayMessageType();
     ~UnderlayMessageType() override;
 
-    bool serialize(void* data,
-                   eprosima::fastrtps::rtps::SerializedPayload_t* payload) override;
-    bool serialize(void* data,
-                   eprosima::fastrtps::rtps::SerializedPayload_t* payload,
-                   eprosima::fastdds::dds::DataRepresentationId_t
-                           data_representation) override;
-    bool deserialize(eprosima::fastrtps::rtps::SerializedPayload_t* payload,
+    bool serialize(
+            const void* const data,
+            eprosima::fastdds::rtps::SerializedPayload_t& payload,
+            eprosima::fastdds::dds::DataRepresentationId_t data_representation)
+            override;
+    bool deserialize(eprosima::fastdds::rtps::SerializedPayload_t& payload,
                      void* data) override;
-    std::function<uint32_t()> getSerializedSizeProvider(void* data) override;
-    std::function<uint32_t()> getSerializedSizeProvider(
-            void* data,
-            eprosima::fastdds::dds::DataRepresentationId_t
-                    data_representation) override;
-    bool getKey(void* data, eprosima::fastrtps::rtps::InstanceHandle_t* ihandle,
-                bool force_md5 = false) override;
-    void* createData() override;
-    void deleteData(void* data) override;
+    uint32_t calculate_serialized_size(
+            const void* const data,
+            eprosima::fastdds::dds::DataRepresentationId_t data_representation)
+            override;
+    bool compute_key(eprosima::fastdds::rtps::SerializedPayload_t& payload,
+                     eprosima::fastdds::rtps::InstanceHandle_t& ihandle,
+                     bool force_md5 = false) override;
+    bool compute_key(const void* const data,
+                     eprosima::fastdds::rtps::InstanceHandle_t& ihandle,
+                     bool force_md5 = false) override;
+    void* create_data() override;
+    void delete_data(void* data) override;
 
-    MD5 m_md5;
+    eprosima::fastdds::MD5 m_md5;
     unsigned char* m_keyBuffer;
 };
+
+/** Factory used by Participant (declared there without this header). */
+eprosima::fastdds::dds::TypeSupport MakeUnderlayTypeSupport();
 
 }  // namespace transport
 }  // namespace autolink
