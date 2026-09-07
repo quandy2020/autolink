@@ -4,10 +4,13 @@ Changelog
 2026-09-07
 ----------
 
+- M7：硬切 Fast DDS **3.x**（FetchContent ``GIT_TAG v3.6.2``；``find_package(fastdds 3)`` / 目标 ``fastdds``）；系统仅 2.x 时 CMake FATAL；不再支持 2.14。
+- M7：RTPS API 迁至 ``eprosima::fastdds::*``（Participant / Underlay / Dispatcher / Transmitter / Topology）；M6 Security PropertyPolicy 语义跟迁回归。
+- M7：文档 §14 以 3.x 为唯一基线；去掉「默认 2.14 / 3.x 未测」叙事。
 - M6：opt-in DDS Security（``AUTOLINK_RTPS_SECURITY=1`` + ``AUTOLINK_RTPS_SECURITY_DIR``）；Auth PKI-DH + Crypto AES-GCM-GMAC；Access 仅 allow-all。
 - M6：``SecurityConfig`` 校验证书目录六文件；缺证时 Hub Init fail-loud（不回退明文）；FetchContent Fast DDS ``SECURITY=ON`` + OpenSSL。
 - M6：文档 §14 Security 节（目录约定、签名步骤、双机加密清单）；Permissions 本里程碑非 ACL。
-- M5：Discovery Server CLIENT（``AUTOLINK_DISCOVERY_SERVER``）；``RtpsStats`` 进程内计数；payload 软限；CMake 对 Fast DDS 3.x 发出 WARNING。
+- M5：Discovery Server CLIENT（``AUTOLINK_DISCOVERY_SERVER``）；``RtpsStats`` 进程内计数；payload 软限。
 - M4：``RtpsParticipantHub`` 双 Participant（topology / transport）。
 - M4：``RtpsTopologyBackend`` 跨机 ``ChangeMsg`` 发现（``AUTOLINK_TOPOLOGY_BACKEND=rtps``）；Start 失败回退 local。
 - M4：冒烟测 ``rtps_topology_backend_test``；文档 §14 双机拓扑说明。
