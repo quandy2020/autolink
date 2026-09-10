@@ -180,6 +180,7 @@ add_executable(autolink_mainboard
     mainboard/module_argument.cpp
     mainboard/module_controller.cpp
 )
+set_target_properties(autolink_mainboard PROPERTIES OUTPUT_NAME mainboard)
 target_link_libraries(autolink_mainboard PRIVATE autolink)
 
 # 可选工具：与 Autolink tools 一致，每工具一目录、每目录一 CMakeLists（构建或仅安装）
