@@ -88,8 +88,9 @@ bool IsUnmanagedClassRegistered(const std::string& class_name);
 template <typename Derived, typename Base>
 void RegisterClass(const std::string& class_name,
                    const std::string& base_class_name) {
-    AINFO << "registerclass:" << class_name << "," << base_class_name << ","
-          << GetCurLoadingLibraryName();
+    // Routine static registration; keep off default stderr (--help / -V).
+    ADEBUG << "registerclass:" << class_name << "," << base_class_name << ","
+           << GetCurLoadingLibraryName();
 
     utility::AbstractClassFactory<Base>* new_class_factory_obj =
         new utility::ClassFactory<Derived, Base>(class_name, base_class_name);
