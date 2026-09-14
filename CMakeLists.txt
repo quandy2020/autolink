@@ -44,7 +44,7 @@ include_directories(${AUTOLINK_ROOT_DIR})
 
 # include modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/functions.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/autonomy_common.cmake")
 google_initialize_autonomy_project()
 
 # Optional Fast DDS 2.14 (sets AUTOLINK_HAS_FASTDDS; linking applied on target)
