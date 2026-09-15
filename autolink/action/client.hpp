@@ -585,8 +585,10 @@ void Client<ActionT>::HandleFeedback(
     ADEBUG << "HandleFeedback: received feedback message for goal ID: "
            << ToString(goal_id);
     if (goal_handles_.count(goal_id) == 0) {
-        AWARN << "HandleFeedback: received feedback for unknown goal ID: "
-              << ToString(goal_id) << ". Ignoring...";
+        // Common after cancel/preempt: server still publishes a few frames for
+        // the retired goal. Not actionable at WARN rate (~control Hz).
+        ADEBUG << "HandleFeedback: received feedback for unknown goal ID: "
+               << ToString(goal_id) << ". Ignoring...";
         return;
     }
 

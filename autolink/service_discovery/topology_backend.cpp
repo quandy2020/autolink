@@ -16,7 +16,9 @@
 
 #include "autolink/service_discovery/topology_backend.hpp"
 
+#include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -41,6 +43,24 @@ constexpr auto kCleanupInterval = std::chrono::seconds(2);
 constexpr auto kProcessLease = std::chrono::seconds(5);
 constexpr auto kCompactInterval = std::chrono::seconds(10);
 constexpr off_t kMaxEventFileSize = 4 * 1024 * 1024;
+
+// Local-file topology replays the whole event log on Start. Skip JOIN/state
+// updates for PIDs that no longer exist on this host so stale message types
+// (e.g. an old Twist2D /cmd_vel writer) do not re-enter ChannelManager.
+bool IsLocalProcessAlive(const std::string& host_name, int process_id,
+                         const std::string& self_host_name) {
+    if (process_id <= 0) {
+        return false;
+    }
+    if (host_name != self_host_name) {
+        // Local backend is same-host discovery; treat other hosts as unknown.
+        return true;
+    }
+    if (kill(process_id, 0) == 0) {
+        return true;
+    }
+    return errno != ESRCH;
+}
 
 std::string ToHex(const std::string& input) {
     static const char kHex[] = "0123456789abcdef";
@@ -207,6 +227,12 @@ void LocalTopologyBackend::PollLoop() {
 }
 
 void LocalTopologyBackend::DispatchMessage(const proto::ChangeMsg& msg) {
+    const auto& attr = msg.role_attr();
+    if (msg.operate_type() == proto::OperateType::OPT_JOIN &&
+        !IsLocalProcessAlive(attr.host_name(), attr.process_id(),
+                             self_host_name_)) {
+        return;
+    }
     std::vector<ChangeCallback> callbacks;
     {
         std::lock_guard<std::mutex> lock(subscribers_mutex_);
@@ -226,6 +252,10 @@ void LocalTopologyBackend::DispatchMessage(const proto::ChangeMsg& msg) {
 void LocalTopologyBackend::HandleIncomingMessage(const proto::ChangeMsg& msg) {
     const auto& attr = msg.role_attr();
     if (attr.host_name().empty() || attr.process_id() == 0) {
+        return;
+    }
+    if (!IsLocalProcessAlive(attr.host_name(), attr.process_id(),
+                             self_host_name_)) {
         return;
     }
     const std::string process_key = ProcessKey(attr);
