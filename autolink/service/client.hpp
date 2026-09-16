@@ -394,13 +394,17 @@ Client<Request, Response>::AsyncSendRequest(SharedRequest request,
 template <typename Request, typename Response>
 bool Client<Request, Response>::ServiceIsReady() const {
     auto* topology = service_discovery::TopologyManager::Instance();
-    const bool has_service =
-        topology->service_manager()->HasService(service_name_);
     const bool has_request_reader =
         topology->channel_manager()->HasReader(request_channel_);
     const bool has_response_writer =
         topology->channel_manager()->HasWriter(response_channel_);
-    return has_service && has_request_reader && has_response_writer;
+    // Channel endpoints are enough to RPC. ROLE_SERVER joins can lag behind
+    // __SRV__ channel discovery (see tools/cli/discovery_wait.hpp).
+    if (has_request_reader && has_response_writer) {
+        return true;
+    }
+    return topology->service_manager()->HasService(service_name_) &&
+           has_request_reader && has_response_writer;
 }
 
 template <typename Request, typename Response>

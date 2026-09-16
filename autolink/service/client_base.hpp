@@ -69,8 +69,18 @@ protected:
         const std::string request_channel =
             service_name_ + SRV_CHANNEL_REQ_SUFFIX;
         const auto ready = [&]() {
-            return topology->service_manager()->HasService(service_name_) &&
-                   topology->channel_manager()->HasReader(request_channel);
+            const bool has_reader =
+                topology->channel_manager()->HasReader(request_channel);
+            if (!has_reader) {
+                return false;
+            }
+            if (topology->service_manager()->HasService(service_name_)) {
+                return true;
+            }
+            // ROLE_SERVER can lag behind __SRV__ channels; accept writer peer.
+            const std::string response_channel =
+                service_name_ + SRV_CHANNEL_RES_SUFFIX;
+            return topology->channel_manager()->HasWriter(response_channel);
         };
         if (ready()) {
             return true;
