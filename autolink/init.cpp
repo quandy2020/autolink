@@ -65,7 +65,7 @@ void InitLogger(const char* binary_name) {
         ::autolink::binary::SetName(binary_name);
     }
 
-    // Init glog (idempotent: autonomy mains may call InitGoogleLogging before autolink::Init)
+    // Init glog once; callers must use InitLogging / Init — never InitGoogleLogging.
     if (!google::IsGoogleLoggingInitialized()) {
         google::InitGoogleLogging(binary_name);
         google::SetLogDestination(google::ERROR, "");
@@ -88,9 +88,15 @@ void InitLogger(const char* binary_name) {
 
 void StopLogger() {
     delete async_logger;
+    async_logger = nullptr;
 }
 
 }  // namespace
+
+void InitLogging(const char* binary_name) {
+    std::lock_guard<std::mutex> lg(g_mutex);
+    InitLogger(binary_name);
+}
 
 void OnShutdown(int sig) {
     (void)sig;

@@ -23,6 +23,9 @@
 
 namespace autolink {
 
+/** glog + AsyncLogger only (no scheduler / topology). Idempotent. */
+void InitLogging(const char* binary_name);
+
 bool Init(const char* binary_name, const std::string& dag_info = "");
 void Clear();
 void OnShutdown(int sig);
