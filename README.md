@@ -16,7 +16,7 @@ python3 docker/run.py
 **本机**
 
 ```bash
-python3 scripts/install_dependency.py
+python3 scripts/install_dependencies.py
 cmake -S . -B build
 cmake --build build -j8
 ```

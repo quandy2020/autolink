@@ -36,9 +36,52 @@ const char* g_binary_name = "mainboard";
 const int g_default_respawn_limit = 3;
 const int force_stop_timeout_secs = 3;
 
-std::string GetLaunchPath() {
+std::vector<std::string> SplitLaunchSearchPath(const std::string& raw) {
+    std::vector<std::string> dirs;
+    if (raw.empty()) {
+        return dirs;
+    }
+    size_t start = 0;
+    while (start <= raw.size()) {
+        const size_t pos = raw.find(':', start);
+        const std::string part =
+            (pos == std::string::npos) ? raw.substr(start)
+                                      : raw.substr(start, pos - start);
+        if (!part.empty()) {
+            dirs.push_back(part);
+        }
+        if (pos == std::string::npos) {
+            break;
+        }
+        start = pos + 1;
+    }
+    return dirs;
+}
+
+std::string GetLaunchPathEnv() {
     const char* p = std::getenv("AUTOLINK_LAUNCH_PATH");
     return p ? p : "/autolink";
+}
+
+/** Resolve a launch file name against AUTOLINK_LAUNCH_PATH (':' separated). */
+std::string ResolveLaunchFile(const std::string& launch_file) {
+    if (launch_file.empty()) {
+        return ResolveLaunchFile("autolink.launch");
+    }
+    if (launch_file[0] == '/' && access(launch_file.c_str(), R_OK) == 0) {
+        return launch_file;
+    }
+    // Relative path that already exists from cwd.
+    if (access(launch_file.c_str(), R_OK) == 0) {
+        return launch_file;
+    }
+    for (const std::string& dir : SplitLaunchSearchPath(GetLaunchPathEnv())) {
+        const std::string full = dir + "/" + launch_file;
+        if (access(full.c_str(), R_OK) == 0) {
+            return full;
+        }
+    }
+    return "";
 }
 
 std::string GetLogDir() {
@@ -326,17 +369,12 @@ void ApplyEnvironment(const tinyxml2::XMLElement* root) {
 }
 
 int Start(const std::string& launch_file) {
-    std::string path = launch_file;
-    if (path.empty())
-        path = "autolink.launch";
-    std::string launch_path = GetLaunchPath();
-    if (path[0] != '/') {
-        std::string full = launch_path + "/" + path;
-        if (access(full.c_str(), R_OK) == 0)
-            path = full;
-    }
-    if (access(path.c_str(), R_OK) != 0) {
-        LogError("Cannot find launch file: " + path);
+    std::string path = ResolveLaunchFile(launch_file);
+    if (path.empty()) {
+        LogError("Cannot find launch file: " +
+                 (launch_file.empty() ? std::string("autolink.launch")
+                                      : launch_file) +
+                 " (AUTOLINK_LAUNCH_PATH=" + GetLaunchPathEnv() + ")");
         return 1;
     }
 
