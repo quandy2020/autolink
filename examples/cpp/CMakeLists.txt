@@ -16,58 +16,34 @@ if(NOT TARGET autolink)
   return()
 endif()
 
-set(EXAMPLES_OUTPUT_DIR "${CMAKE_BINARY_DIR}/bin/examples")
-set(EXAMPLES_PROTO_GEN_DIR "${CMAKE_BINARY_DIR}/examples_proto")
-set(EXAMPLES_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
-file(MAKE_DIRECTORY "${EXAMPLES_PROTO_GEN_DIR}")
+# Header is "examples.pb.h", so the proto directory is the layout root.
+autocmake_protobuf(examples_proto
+  SOURCES proto/examples.proto
+  IMPORTS "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 
-# protoc 3.x 将 .pb.cc/.pb.h 生成到 cpp_out 根目录（不按 package 建子目录）
-set(EXAMPLES_PROTO_SRC "${EXAMPLES_PROTO_GEN_DIR}/examples.pb.cc")
-set(EXAMPLES_PROTO_HDR "${EXAMPLES_PROTO_GEN_DIR}/examples.pb.h")
-add_custom_command(
-  OUTPUT ${EXAMPLES_PROTO_SRC} ${EXAMPLES_PROTO_HDR}
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${EXAMPLES_PROTO_GEN_DIR}
-  COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-    --proto_path=${EXAMPLES_PROTO_DIR}
-    --cpp_out=${EXAMPLES_PROTO_GEN_DIR}
-    examples.proto
-  WORKING_DIRECTORY ${EXAMPLES_PROTO_DIR}
-  DEPENDS ${EXAMPLES_PROTO_DIR}/examples.proto
-  COMMENT "Generating C++ for examples.proto"
-  VERBATIM
-)
-# OBJECT 库，不产出 libexamples_proto.a；.o 直接链入示例可执行文件与 common_component_example.so
-add_library(examples_proto OBJECT ${EXAMPLES_PROTO_SRC} ${EXAMPLES_PROTO_HDR})
-set_target_properties(examples_proto PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(examples_proto PUBLIC ${EXAMPLES_PROTO_GEN_DIR} ${Protobuf_INCLUDE_DIRS})
-target_link_libraries(examples_proto PUBLIC ${Protobuf_LIBRARIES})
-
-function(autolink_example NAME SRCS)
-  add_executable(${NAME} ${SRCS})
-  target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${EXAMPLES_PROTO_GEN_DIR})
-  target_link_libraries(${NAME} PRIVATE autolink)
-  set_target_properties(${NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${EXAMPLES_OUTPUT_DIR}")
+function(autolink_example name)
+  autocmake_binary(autolink_example_${name}
+    SOURCES ${name}.cpp
+    DEPENDENCIES autolink ${ARGN})
+  set_target_properties(autolink_example_${name} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/examples")
 endfunction()
 
-function(autolink_example_with_proto NAME SRCS)
-  autolink_example(${NAME} ${SRCS})
-  target_link_libraries(${NAME} PRIVATE examples_proto)
+function(autolink_component_example name)
+  autocmake_library(${name} SHARED SOURCES "${name}/${name}.cpp")
+  target_link_libraries(${name} PRIVATE autolink examples_proto)
+  set_target_properties(${name} PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/examples/${name}")
 endfunction()
 
-# 依赖 examples proto 的示例
-autolink_example_with_proto(autolink_example_talker talker.cpp)
-autolink_example_with_proto(autolink_example_listener listener.cpp)
-autolink_example_with_proto(autolink_example_talker_listener talker_listener.cpp)
-autolink_example_with_proto(autolink_example_service service.cpp)
-autolink_example_with_proto(autolink_example_paramserver paramserver.cpp)
-autolink_example_with_proto(autolink_example_record record.cpp)
-autolink_example_with_proto(autolink_example_action_listener action_listener.cpp)
-autolink_example_with_proto(autolink_example_action_talker action_talker.cpp)
-autolink_example_with_proto(autolink_example_action_talker2 action_talker2.cpp)
-autolink_example(autolink_example_pod_talker_listener pod_talker_listener.cpp)
-autolink_example(autolink_example_pod_talker pod_talker.cpp)
-autolink_example(autolink_example_pod_listener pod_listener.cpp)
+foreach(_name IN ITEMS
+    talker listener talker_listener service paramserver record
+    action_listener action_talker action_talker2)
+  autolink_example(${_name} examples_proto)
+endforeach()
+foreach(_name IN ITEMS pod_talker_listener pod_talker pod_listener)
+  autolink_example(${_name})
+endforeach()
 
-# component
-add_subdirectory(timer_component_example)
-add_subdirectory(common_component_example)
+autolink_component_example(timer_component_example)
+autolink_component_example(common_component_example)

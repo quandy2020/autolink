@@ -12,136 +12,82 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.14)
+# Package entry. autolink/ builds the library. Optional directories install themselves.
 
-project(autolink LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.20)
 
-# 默认使用 Release 构建，可以通过 -DCMAKE_BUILD_TYPE=Debug 覆盖
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+project(autolink VERSION 0.1.0 LANGUAGES CXX)
+
+# Installed autocmake, or the sibling source tree.
+find_package(autocmake CONFIG QUIET)
+if(NOT autocmake_FOUND)
+  set(AUTOCMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../autocmake")
+  include("${AUTOCMAKE_DIR}/Autocmake.cmake")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# build options
 option(AUTOLINK_BUILD_TOOLS "Build autolink tools" ON)
 option(AUTOLINK_BUILD_TEST "Build unit tests" ON)
 option(AUTOLINK_BUILD_EXAMPLES "Build examples" ON)
 option(AUTOLINK_BUILD_PYTHON "Build Python bindings" ON)
 option(AUTOLINK_BUILD_DOCS "Build documentation" ON)
-option(AUTOLINK_ENABLE_FASTDDS "Build RTPS transport with Fast DDS 2.14" OFF)
+option(AUTOLINK_ENABLE_FASTDDS "Build RTPS transport with Fast DDS 3.x" OFF)
 
-# output directories
+# autocmake_test follows BUILD_TESTING. The C++ tests here use GMock
+# directly; this switch still has to be off before autocmake_build().
+if(DEFINED AUTOLINK_BUILD_TEST AND NOT AUTOLINK_BUILD_TEST)
+  set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)
+endif()
+
+# FindGlog and FindTinyXML2 must be visible before package.xml is resolved.
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+
+autocmake_project(EXTRAS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AutolinkCompat.cmake")
+autocmake_build(QUIT)
+
+# Keep historical layout: executables in bin/, libraries in lib/.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# root directory
 set(AUTOLINK_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(${AUTOLINK_ROOT_DIR})
+set(AUTOLINK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
-# include modules
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/autonomy_common.cmake")
-google_initialize_autonomy_project()
-
-# Optional Fast DDS 2.14 (sets AUTOLINK_HAS_FASTDDS; linking applied on target)
+# Sets AUTOLINK_HAS_FASTDDS. Linking is applied on the library target.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FastDDS.cmake")
 
-if(AUTOLINK_BUILD_TEST)
-  enable_testing()
-  find_package(GMock REQUIRED)
-endif()
-
-# find dependencies
-find_package(Protobuf REQUIRED)
-find_package(Glog REQUIRED)
-find_package(TinyXML2 REQUIRED)
-
-# add subdirectories（proto 已合并进 autolink/CMakeLists.txt）
 add_subdirectory(autolink)
-
-# add examples  
+set(_optional "")
+if(AUTOLINK_BUILD_PYTHON)
+  list(APPEND _optional autolink/python)
+endif()
 if(AUTOLINK_BUILD_EXAMPLES)
-  add_subdirectory(examples)
+  list(APPEND _optional examples)
 endif()
-
-# add docs
 if(AUTOLINK_BUILD_DOCS)
-  add_subdirectory(docs)
+  list(APPEND _optional docs)
+endif()
+foreach(_dir ${_optional})
+  add_subdirectory(${_dir})
+endforeach()
+
+# In-tree alias. The installed config creates the same name from
+# autolink::autolink via cmake/AutolinkCompat.cmake.
+if(NOT TARGET Autolink::Autolink)
+  add_library(Autolink::Autolink ALIAS autolink)
 endif()
 
-# -----------------------------------------------------------------------------
-# install: sudo make install 或 cmake --build build --target install
-# -----------------------------------------------------------------------------
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-# 库与可执行文件（autolink_proto 已静态链接进 autolink，仅安装 libautolink.so）
+# The autonomy superproject exports this library on AutonomyExport.
+# A target can belong to that set in addition to the autocmake export.
 if(CMAKE_PROJECT_NAME STREQUAL "autonomy")
   install(TARGETS autolink
     EXPORT AutonomyExport
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  )
-else()
-  install(TARGETS autolink
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  )
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-install(TARGETS autolink_mainboard
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
 
-# 头文件（源码中的 .hpp/.h）：autolink/ 即 add_subdirectory(autolink) 所在目录，含 base/、tools/ 等
-install(DIRECTORY autolink/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/autolink
-  FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
-)
+# find_package(Autolink) looks beside lib/cmake/Autolink, not lib/cmake/autolink.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AutolinkConfig.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Autolink")
 
-# 生成的 proto 头文件（.pb.h）
-install(DIRECTORY ${CMAKE_BINARY_DIR}/autolink/proto/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/autolink/proto
-  FILES_MATCHING PATTERN "*.pb.h"
-)
-
-# configure_file 生成的 conf.hpp（environment.hpp 依赖）
-install(FILES ${CMAKE_BINARY_DIR}/autolink/conf/conf.hpp
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/autolink/conf
-)
-
-# config files -> /usr/local/share/autolink/conf/*.conf
-install(DIRECTORY autolink/conf/
-  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/autolink/conf
-  FILES_MATCHING PATTERN "*.conf"
-)
-
-# CMake package config for external consumers:
-#   find_package(Autolink REQUIRED)
-set(AUTOLINK_CMAKE_PACKAGE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/Autolink")
-set(AUTOLINK_CMAKE_PACKAGE_VERSION "0.1.0")
-
-configure_package_config_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AutolinkConfig.cmake.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfig.cmake"
-  INSTALL_DESTINATION "${AUTOLINK_CMAKE_PACKAGE_DIR}"
-)
-
-write_basic_package_version_file(
-  "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfigVersion.cmake"
-  VERSION "${AUTOLINK_CMAKE_PACKAGE_VERSION}"
-  COMPATIBILITY SameMajorVersion
-)
-
-install(
-  FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/AutolinkConfigVersion.cmake"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindAutolink.cmake"
-  DESTINATION "${AUTOLINK_CMAKE_PACKAGE_DIR}"
-)
+autocmake_package()

@@ -50,6 +50,18 @@ function(autolink_probe_fastdds_version out_version out_verfile)
   set(${out_verfile} "" PARENT_SCOPE)
 endfunction()
 
+function(_autolink_use_system_fastdds version libs)
+  if(version VERSION_LESS "3.0")
+    message(FATAL_ERROR "autolink requires Fast DDS >= 3.0 (found ${version})")
+  endif()
+  set(AUTOLINK_HAS_FASTDDS ON PARENT_SCOPE)
+  set(AUTOLINK_FASTDDS_LINK_LIBS ${libs} PARENT_SCOPE)
+  message(STATUS "autolink: Fast DDS ${version} (${libs})")
+  message(WARNING
+    "autolink: system Fast DDS may have been built without SECURITY; "
+    "DDS Security plugins will fail at runtime if missing.")
+endfunction()
+
 # FATAL if prefix has Fast DDS / fastrtps major < 3 (do not Fetch over 2.x).
 function(autolink_fatal_if_fastdds_2x_installed)
   autolink_probe_fastdds_version(_probe_ver _probe_file)
@@ -64,41 +76,12 @@ endfunction()
 if(AUTOLINK_ENABLE_FASTDDS)
   find_package(fastdds 3 QUIET)
   if(fastdds_FOUND)
-    if(fastdds_VERSION VERSION_LESS "3.0")
-      message(FATAL_ERROR
-        "autolink requires Fast DDS >= 3.0 (found ${fastdds_VERSION})")
-    endif()
-    set(AUTOLINK_HAS_FASTDDS ON)
-    set(AUTOLINK_FASTDDS_LINK_LIBS fastdds fastcdr)
-    message(STATUS "autolink: using Fast DDS via find_package(fastdds) "
-                   "(${fastdds_VERSION})")
-    message(WARNING
-      "autolink: system Fast DDS may have been built without SECURITY; "
-      "DDS Security plugins will fail at runtime if missing. Prefer "
-      "FetchContent with SECURITY=ON or a security-enabled package.")
+    _autolink_use_system_fastdds("${fastdds_VERSION}" "fastdds;fastcdr")
   else()
-    # find_package(fastdds 3) failed — reject lingering 2.x before Fetch.
     autolink_fatal_if_fastdds_2x_installed()
-
-    # Also catch fastrtps 2.x packages that do not export fastddsConfig.
     find_package(fastrtps QUIET)
     if(fastrtps_FOUND)
-      if(fastrtps_VERSION VERSION_LESS "3.0")
-        message(FATAL_ERROR
-          "autolink requires Fast DDS >= 3.0 (found fastrtps "
-          "${fastrtps_VERSION}). Uninstall the 2.x package or clear it "
-          "from CMAKE_PREFIX_PATH, then re-run cmake.")
-      endif()
-      # Rare: 3.x still exporting only the fastrtps package name.
-      set(AUTOLINK_HAS_FASTDDS ON)
-      set(AUTOLINK_FASTDDS_LINK_LIBS fastrtps fastcdr)
-      message(WARNING
-        "autolink: linking fastrtps package; prefer fastdds target "
-        "(found ${fastrtps_VERSION})")
-      message(WARNING
-        "autolink: system Fast DDS may have been built without SECURITY; "
-        "DDS Security plugins will fail at runtime if missing. Prefer "
-        "FetchContent with SECURITY=ON or a security-enabled package.")
+      _autolink_use_system_fastdds("${fastrtps_VERSION}" "fastrtps;fastcdr")
     else()
       message(STATUS "autolink: fastdds 3.x not found; "
                      "FetchContent Fast-DDS ${AUTOLINK_FASTDDS_GIT_TAG}")

@@ -12,19 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# 文档目录：MkDocs 管理，构建产物输出到 build/docs/site/
-# 安装依赖: pip install -r docs/requirements.txt
-# 本地预览: cd docs && mkdocs serve
-# 构建文档: make docs（或 cmake --build build --target docs）
-set(DOCS_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/site")
+# MkDocs site. Preview: cd docs && mkdocs serve
 find_program(MkDocs_EXECUTABLE mkdocs)
-if(MkDocs_EXECUTABLE)
-  add_custom_target(docs
-    COMMAND "${MkDocs_EXECUTABLE}" build -d "${DOCS_OUTPUT_DIR}"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    BYPRODUCTS "${DOCS_OUTPUT_DIR}"
-    COMMENT "Building docs with MkDocs -> ${DOCS_OUTPUT_DIR}"
-  )
-else()
-  message(STATUS "mkdocs not found; docs target disabled. Install: pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt")
+if(NOT MkDocs_EXECUTABLE)
+  message(STATUS "mkdocs not found; docs target disabled")
+  return()
 endif()
+add_custom_target(docs
+  COMMAND "${MkDocs_EXECUTABLE}" build -d "${CMAKE_CURRENT_BINARY_DIR}/site"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "Building docs with MkDocs")

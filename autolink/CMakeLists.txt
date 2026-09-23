@@ -12,233 +12,140 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# -----------------------------------------------------------------------------
-# proto（参考 autonomy/autolink/CMakeLists.txt：单次 protoc、custom_target、core 依赖）
-# -----------------------------------------------------------------------------
-set(AUTOLINK_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
-set(AUTOLINK_PROTO_GEN_DIR "${CMAKE_BINARY_DIR}/autolink/proto")
-file(MAKE_DIRECTORY "${AUTOLINK_PROTO_GEN_DIR}")
-
-file(GLOB AUTOLINK_PROTO_FILES "${AUTOLINK_PROTO_DIR}/*.proto")
-
-set(AUTOLINK_PROTO_SRCS)
-set(AUTOLINK_PROTO_HDRS)
-set(AUTOLINK_PROTO_INPUTS)
-
-foreach(PROTO_FILE ${AUTOLINK_PROTO_FILES})
-  get_filename_component(PROTO_NAME "${PROTO_FILE}" NAME_WE)
-  get_filename_component(PROTO_BASENAME "${PROTO_FILE}" NAME)
-  list(APPEND AUTOLINK_PROTO_SRCS "${AUTOLINK_PROTO_GEN_DIR}/${PROTO_NAME}.pb.cc")
-  list(APPEND AUTOLINK_PROTO_HDRS "${AUTOLINK_PROTO_GEN_DIR}/${PROTO_NAME}.pb.h")
-  list(APPEND AUTOLINK_PROTO_INPUTS "${PROTO_BASENAME}")
-endforeach()
-
-add_custom_command(
-  OUTPUT ${AUTOLINK_PROTO_SRCS} ${AUTOLINK_PROTO_HDRS}
-  COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-    --proto_path=${AUTOLINK_PROTO_DIR}
-    --cpp_out=${AUTOLINK_PROTO_GEN_DIR}
-    ${AUTOLINK_PROTO_INPUTS}
-  WORKING_DIRECTORY ${AUTOLINK_PROTO_DIR}
-  DEPENDS ${AUTOLINK_PROTO_FILES}
-  COMMENT "Generating C++ protobuf files"
-)
-
-add_custom_target(autolink_protos DEPENDS ${AUTOLINK_PROTO_SRCS} ${AUTOLINK_PROTO_HDRS})
-
 set(AUTOLINK_DEFAULT_CONF_DIR "${AUTOLINK_ROOT_DIR}/autolink/conf")
 set(AUTOLINK_DEFAULT_PLUGIN_INDEX_DIR
-    "${CMAKE_INSTALL_PREFIX}/share/autolink_plugin_index")
-file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/autolink/conf")
-configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/conf/conf.hpp.in"
-  "${CMAKE_BINARY_DIR}/autolink/conf/conf.hpp"
-  @ONLY
-)
+  "${CMAKE_INSTALL_PREFIX}/share/autolink_plugin_index")
+file(MAKE_DIRECTORY "${AUTOLINK_BINARY_DIR}/autolink/conf")
+configure_file(conf/conf.hpp.in "${AUTOLINK_BINARY_DIR}/autolink/conf/conf.hpp" @ONLY)
 
-# -----------------------------------------------------------------------------
-# core 库与 mainboard
-# -----------------------------------------------------------------------------
-file(GLOB_RECURSE AUTOLINK_CORE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/action/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/base/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/blocker/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/class_loader/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/common/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/component/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/context/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/croutine/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/data/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/event/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/io/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/logger/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/message/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/node/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/parameter/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/plugin_manager/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/profiler/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/record/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/scheduler/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/service/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/service_discovery/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/sysmo/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/task/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/time/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/timer/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transport/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/binary.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/autolink.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/init.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/state.cpp"
-)
+# Tests, tools, mainboard, examples, and Fast DDS sources stay out of the core list.
+file(GLOB_RECURSE AUTOLINK_CORE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX
+  "(_test\\.cpp$|/(tools|mainboard|example|integration_test|python)/|/transport/rtps/|rtps_dispatcher\\.cpp$|rtps_topology_backend\\.cpp$)")
 
-# 排除单元测试、示例和工具等非核心源码
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*_test.cpp$")
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/tools/.*")
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/mainboard/.*")
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/example/.*")
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/integration_test/.*")
-# RTPS / Fast DDS sources only when AUTOLINK_HAS_FASTDDS
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/transport/rtps/.*")
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/transport/dispatcher/rtps_dispatcher\\.cpp$")
-list(FILTER AUTOLINK_CORE_SOURCES EXCLUDE REGEX ".*/service_discovery/rtps_topology_backend\\.cpp$")
+autocmake_library(autolink SHARED SOURCES ${AUTOLINK_CORE_SOURCES})
 
-add_library(autolink SHARED ${AUTOLINK_CORE_SOURCES} ${AUTOLINK_PROTO_SRCS})
-add_dependencies(autolink autolink_protos)
+# Layout root keeps includes as "autolink/proto/*.pb.h".
+# The proto directory is the search path for import "qos_profile.proto".
+file(GLOB AUTOLINK_PROTO_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/proto/*.proto")
+autocmake_protobuf(autolink
+  SOURCES ${AUTOLINK_PROTO_FILES}
+  IMPORTS "${AUTOLINK_ROOT_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 
-# SecurityConfig has no Fast DDS dependency — always build (OFF/ON).
-target_sources(autolink PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/security_config.cpp"
-)
-
-if(AUTOLINK_HAS_FASTDDS)
-  target_sources(autolink PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/underlay_message.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/underlay_message_type.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/participant.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/participant_hub.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/attributes_filler.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transport/dispatcher/rtps_dispatcher.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/service_discovery/rtps_topology_backend.cpp"
-  )
-endif()
-
+# Staged next to the protoc rule. autolink/python/ cannot depend on that output.
 if(AUTOLINK_BUILD_PYTHON)
-  # Channel Writer/Reader templates must live in libautolink, not in the
-  # pybind11 module (duplicate template statics across .so caused Init segfault).
-  target_sources(autolink PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/channel_bridge.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/parameter_bridge.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/utils_bridge.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/action_bridge.cpp")
+  set(_py "${CMAKE_BINARY_DIR}/python/autolink")
+  set(_pb2 "${CMAKE_CURRENT_BINARY_DIR}/autolink/proto")
+  set(_staged
+    "${_py}/proto/unit_test_pb2.py"
+    "${_py}/proto/action_pb2.py"
+    "${_py}/proto/parameter_pb2.py"
+    "${_py}/examples/examples_pb2.py")
+  add_custom_command(
+    OUTPUT ${_staged}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_py}/proto" "${_py}/examples"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${_pb2}/unit_test_pb2.py" "${_pb2}/action_pb2.py" "${_pb2}/parameter_pb2.py"
+      "${_py}/proto"
+    COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+      --proto_path=${AUTOLINK_ROOT_DIR}/examples/cpp/proto
+      --python_out=${_py}/examples
+      ${AUTOLINK_ROOT_DIR}/examples/cpp/proto/examples.proto
+    COMMAND ${CMAKE_COMMAND} -E touch "${_py}/proto/__init__.py" "${_py}/examples/__init__.py"
+    DEPENDS
+      "${_pb2}/unit_test_pb2.py" "${_pb2}/action_pb2.py" "${_pb2}/parameter_pb2.py"
+      "${AUTOLINK_ROOT_DIR}/examples/cpp/proto/examples.proto"
+    COMMENT "Staging Python protobuf (*_pb2.py)"
+    VERBATIM)
+  add_custom_target(autolink_python_pb2 ALL DEPENDS ${_staged})
+
+  # Writer/Reader templates belong in libautolink. Putting them in the
+  # pybind module duplicated template statics and crashed Init.
+  file(GLOB _bridges CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/python/bridge/*.cpp")
+  target_sources(autolink PRIVATE ${_bridges})
 endif()
 
-# croutine 协程上下文切换汇编（按架构二选一，需启用 ASM 语言）
+# security_config has no Fast DDS dependency.
+if(AUTOLINK_HAS_FASTDDS)
+  file(GLOB_RECURSE _rtps CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/transport/rtps/*.cpp")
+  list(FILTER _rtps EXCLUDE REGEX "_test\\.cpp$")
+  target_sources(autolink PRIVATE
+    ${_rtps}
+    "${CMAKE_CURRENT_SOURCE_DIR}/transport/dispatcher/rtps_dispatcher.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/service_discovery/rtps_topology_backend.cpp")
+else()
+  target_sources(autolink PRIVATE transport/rtps/security_config.cpp)
+endif()
+
 enable_language(ASM)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-    target_sources(autolink PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/croutine/detail/swap_aarch64.S")
+  set(_swap swap_aarch64.S)
 else()
-    target_sources(autolink PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/croutine/detail/swap_x86_64.S")
+  set(_swap swap_x86_64.S)
 endif()
+target_sources(autolink PRIVATE "croutine/detail/${_swap}")
 
 target_include_directories(autolink PUBLIC
-    $<BUILD_INTERFACE:${AUTOLINK_ROOT_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    ${Protobuf_INCLUDE_DIRS}
-)
+  $<BUILD_INTERFACE:${AUTOLINK_ROOT_DIR}>
+  $<BUILD_INTERFACE:${AUTOLINK_BINARY_DIR}>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-# Module-mode FindProtobuf often omits abseil; pkg-config pulls transitive deps.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(PROTOBUF_PC REQUIRED protobuf)
-
-target_link_libraries(autolink PUBLIC
-    ${Protobuf_LIBRARIES}
-    ${PROTOBUF_PC_LDFLAGS}
-    ${GLOG_LIBRARIES}
-    ${RT_LIB}
-    TinyXML2::TinyXML2
-)
-target_include_directories(autolink PUBLIC ${PROTOBUF_PC_INCLUDE_DIRS})
-target_link_directories(autolink PUBLIC ${PROTOBUF_PC_LIBRARY_DIRS})
-
-if(APPLE)
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(EPOLL_SHIM REQUIRED IMPORTED_TARGET epoll-shim)
-  target_link_libraries(autolink PUBLIC PkgConfig::EPOLL_SHIM)
-elseif(UNIX)
-  target_link_libraries(autolink PUBLIC atomic dl)
+autocmake_link(autolink Threads TinyXML2)
+if(TARGET glog::glog)
+  target_link_libraries(autolink PUBLIC glog::glog)
+else()
+  target_link_libraries(autolink PUBLIC ${GLOG_LIBRARIES})
+  target_include_directories(autolink PUBLIC ${GLOG_INCLUDE_DIRS})
 endif()
-
-# Fast DDS RTPS: PUBLIC AUTOLINK_ENABLE_FASTDDS=0|1 (+ fastdds/fastrtps link when ON)
+target_link_libraries(autolink PUBLIC atomic dl)
 autolink_apply_fastdds(autolink)
 
-# 可执行程序：mainboard（始终构建）
-add_executable(autolink_mainboard
-    mainboard/mainboard.cpp
-    mainboard/module_argument.cpp
-    mainboard/module_controller.cpp
-)
+autocmake_binary(autolink_mainboard
+  SOURCES mainboard/mainboard.cpp mainboard/module_argument.cpp mainboard/module_controller.cpp
+  DEPENDENCIES autolink)
 set_target_properties(autolink_mainboard PROPERTIES OUTPUT_NAME mainboard)
-target_link_libraries(autolink_mainboard PRIVATE autolink)
 
-# 可选工具：与 Autolink tools 一致，每工具一目录、每目录一 CMakeLists（构建或仅安装）
 if(AUTOLINK_BUILD_TOOLS)
   add_subdirectory(tools)
 endif()
 
-# Python bindings
-if(AUTOLINK_BUILD_PYTHON)
-  add_subdirectory(python)
-endif()
+# Headers sit beside sources. autocmake_protobuf installs the generated ones.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/autolink"
+  FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+install(FILES "${AUTOLINK_BINARY_DIR}/autolink/conf/conf.hpp"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/autolink/conf")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/conf/"
+  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/autolink/conf"
+  FILES_MATCHING PATTERN "*.conf")
 
-# 单元测试
-if(AUTOLINK_BUILD_TEST AND GMock_FOUND)
-  # Keep test include paths aligned with source include style
-  # like "autolink/common/init.hpp" used by python test headers.
-  set(AUTOLINK_TEST_INCLUDE_ROOT "${AUTOLINK_ROOT_DIR}")
-  if(NOT AUTOLINK_TEST_INCLUDE_ROOT)
-    get_filename_component(AUTOLINK_TEST_INCLUDE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+# Each test brings its own main. file_test.cpp also links gmock.
+if(AUTOLINK_BUILD_TEST)
+  find_package(GMock QUIET)
+  set(_deps autolink)
+  if(TARGET GTest::gmock)
+    list(APPEND _deps GTest::gmock)
+  elseif(GMOCK_LIBRARIES)
+    list(APPEND _deps ${GMOCK_LIBRARIES})
   endif()
 
-  file(GLOB_RECURSE ALL_TESTS "${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp")
-  list(FILTER ALL_TESTS EXCLUDE REGEX ".*/integration_test/.*")
-  # RTPS transceiver coverage: builds with AUTOLINK_BUILD_TEST=ON; GTEST_SKIP
-  # when AUTOLINK_ENABLE_FASTDDS=OFF.
-  list(APPEND ALL_TESTS
+  file(GLOB_RECURSE _tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp")
+  list(FILTER _tests EXCLUDE REGEX "/integration_test/")
+  list(APPEND _tests
     "${CMAKE_CURRENT_SOURCE_DIR}/transport/integration_test/rtps_transceiver_test.cpp")
-
-  foreach(ABS_FIL ${ALL_TESTS})
-    file(RELATIVE_PATH REL_FIL ${CMAKE_CURRENT_SOURCE_DIR} ${ABS_FIL})
-    get_filename_component(DIR ${REL_FIL} DIRECTORY)
-    get_filename_component(FIL_WE ${REL_FIL} NAME_WE)
-    if(DIR)
-      set(TEST_TARGET_NAME "${DIR}/${FIL_WE}")
-    else()
-      set(TEST_TARGET_NAME "${FIL_WE}")
+  foreach(_src ${_tests})
+    file(RELATIVE_PATH _rel "${CMAKE_CURRENT_SOURCE_DIR}" "${_src}")
+    cmake_path(REMOVE_EXTENSION _rel OUTPUT_VARIABLE _name)
+    string(REPLACE "/" "." _name "autolink.${_name}")
+    autocmake_test(${_name} SOURCES ${_src} DEPENDENCIES ${_deps} NO_MAIN)
+    if(NOT TARGET ${_name})
+      continue()
     endif()
-    string(REPLACE "/" "." TEST_TARGET_NAME "${TEST_TARGET_NAME}")
-    set(TEST_TARGET_NAME "autolink.${TEST_TARGET_NAME}")
-
-    google_test("${TEST_TARGET_NAME}" ${ABS_FIL})
-    set_target_properties(${TEST_TARGET_NAME} PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-    )
-    target_include_directories(${TEST_TARGET_NAME} PRIVATE
-      ${AUTOLINK_TEST_INCLUDE_ROOT}
-      ${CMAKE_CURRENT_SOURCE_DIR}
-      ${CMAKE_BINARY_DIR}
-      ${GMOCK_INCLUDE_DIRS}
-    )
-    target_link_libraries(${TEST_TARGET_NAME} PRIVATE autolink ${GMOCK_LIBRARIES})
     if(UNIX AND NOT APPLE)
-      target_link_libraries(${TEST_TARGET_NAME} PRIVATE atomic)
+      target_link_libraries(${_name} PRIVATE atomic)
     endif()
-    # Some vendored/system headers trigger -Wmaybe-uninitialized in tests (treated as error in this build).
-    # Keep production library strict; relax only for test targets.
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-      target_compile_options(${TEST_TARGET_NAME} PRIVATE -Wno-error=maybe-uninitialized)
+      target_compile_options(${_name} PRIVATE -Wno-error=maybe-uninitialized)
     endif()
   endforeach()
 endif()
