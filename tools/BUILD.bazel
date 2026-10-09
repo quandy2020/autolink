@@ -1,0 +1,48 @@
+load("//tools:system_libs.bzl", "system_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Prefer /usr/local (docker SDKs) over older distro libraries.
+system_library(
+    name = "glog",
+    linkopts = [
+        "/usr/local/lib/libglog.so",
+        "-Wl,-rpath,/usr/local/lib",
+    ],
+)
+
+system_library(
+    name = "protobuf",
+    linkopts = [
+        "/usr/local/lib/libprotobuf.so",
+        "-Wl,-rpath,/usr/local/lib",
+    ],
+)
+
+system_library(
+    name = "tinyxml2",
+    linkopts = ["/usr/lib/x86_64-linux-gnu/libtinyxml2.so"],
+)
+
+system_library(
+    name = "pthread",
+    linkopts = ["-lpthread"],
+)
+
+system_library(
+    name = "atomic",
+    linkopts = ["-latomic"],
+)
+
+system_library(
+    name = "dl",
+    linkopts = ["-ldl"],
+)
+
+system_library(
+    name = "curses",
+    linkopts = [
+        "-lncurses",
+        "-lform",
+    ],
+)

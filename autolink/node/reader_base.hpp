@@ -192,7 +192,8 @@ private:
         receiver_map_;
     std::mutex receiver_map_mutex_;
 
-    DECLARE_SINGLETON(ReceiverManager<MessageT>)
+    // Injected-class-name: macro must not take ReceiverManager<MessageT>.
+    DECLARE_SINGLETON(ReceiverManager)
 };
 
 /**

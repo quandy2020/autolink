@@ -264,10 +264,25 @@ bool Player::Start() {
 
 bool Player::Stop() {
     if (is_stopped_.exchange(true)) {
+        // Already stopped, but still join any leftover play thread so
+        // ~Player / reset() never destroys a joinable std::thread
+        // (which calls std::terminate).
+        if (nohup_play_th_ != nullptr && nohup_play_th_->joinable()) {
+            nohup_play_th_->join();
+            nohup_play_th_ = nullptr;
+        }
+        if (term_thread_ != nullptr && term_thread_->joinable()) {
+            term_thread_->join();
+            term_thread_ = nullptr;
+        }
         return false;
     }
     producer_->Stop();
     consumer_->Stop();
+    if (nohup_play_th_ != nullptr && nohup_play_th_->joinable()) {
+        nohup_play_th_->join();
+        nohup_play_th_ = nullptr;
+    }
     if (term_thread_ != nullptr && term_thread_->joinable()) {
         term_thread_->join();
         term_thread_ = nullptr;

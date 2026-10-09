@@ -1,0 +1,10 @@
+docs
+doxy-docs
+docker
+scripts
+examples
+cmake
+thirdparty/pybind11
+thirdparty/CLI11/tests
+thirdparty/CLI11/docs
+thirdparty/CLI11/examples

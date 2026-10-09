@@ -1,0 +1,154 @@
+"""Standalone Bazel build for Autolink middleware."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ---------------------------------------------------------------------------
+# Generated conf.hpp  (#include "autolink/conf/conf.hpp")
+# ---------------------------------------------------------------------------
+
+genrule(
+    name = "generate_conf",
+    srcs = ["autolink/conf/conf.hpp.in"],
+    outs = ["autolink/conf/conf.hpp"],
+    cmd = """
+      conf_dir=$$(cd $$(dirname $(location autolink/conf/conf.hpp.in)) && pwd)
+      sed \
+        -e "s|@AUTOLINK_DEFAULT_CONF_DIR@|$$conf_dir|" \
+        -e 's|@CMAKE_INSTALL_PREFIX@|/usr/local|' \
+        -e 's|@AUTOLINK_DEFAULT_PLUGIN_INDEX_DIR@|/usr/local/share/autolink_plugin_index|' \
+        $(location autolink/conf/conf.hpp.in) > $@
+    """,
+)
+
+cc_library(
+    name = "conf",
+    hdrs = [":generate_conf"],
+)
+
+filegroup(
+    name = "conf_files",
+    srcs = glob(["autolink/conf/**/*.conf"], allow_empty = True),
+)
+
+# ---------------------------------------------------------------------------
+# Generated protobuf  (#include "autolink/proto/*.pb.h")
+# ---------------------------------------------------------------------------
+
+PROTO_FILES = glob(["autolink/proto/*.proto"])
+PROTO_HDRS = [f.replace(".proto", ".pb.h") for f in PROTO_FILES]
+PROTO_SRCS = [f.replace(".proto", ".pb.cc") for f in PROTO_FILES]
+
+genrule(
+    name = "generate_protos",
+    srcs = PROTO_FILES,
+    outs = PROTO_HDRS + PROTO_SRCS,
+    # Multiple outs → $(@D) is the package genfiles root.
+    cmd = """
+      mkdir -p $(@D)/autolink/proto
+      /usr/local/bin/protoc \
+        --proto_path=autolink/proto \
+        --cpp_out=$(@D)/autolink/proto \
+        $(SRCS)
+    """,
+)
+
+cc_library(
+    name = "protos",
+    srcs = PROTO_SRCS,
+    hdrs = PROTO_HDRS,
+    deps = ["//tools:protobuf"],
+)
+
+# ---------------------------------------------------------------------------
+# Core library
+# ---------------------------------------------------------------------------
+
+CORE_EXCLUDES = [
+    "**/*_test.cpp",
+    "autolink/tools/**",
+    "autolink/mainboard/**",
+    "**/example/**",
+    "**/integration_test/**",
+    "autolink/python/**",
+    "autolink/transport/rtps/**",
+    "autolink/transport/dispatcher/rtps_dispatcher.cpp",
+    "autolink/service_discovery/rtps_topology_backend.cpp",
+]
+
+cc_library(
+    name = "autolink",
+    srcs = glob(
+        ["autolink/**/*.cpp"],
+        exclude = CORE_EXCLUDES,
+    ) + [
+        # No Fast DDS in this build; keep the security shim only.
+        "autolink/transport/rtps/security_config.cpp",
+    ] + select({
+        "@platforms//cpu:aarch64": ["autolink/croutine/detail/swap_aarch64.S"],
+        "//conditions:default": ["autolink/croutine/detail/swap_x86_64.S"],
+    }),
+    hdrs = glob(
+        [
+            "autolink/**/*.hpp",
+            "autolink/**/*.h",
+        ],
+        exclude = [
+            "**/test/**",
+            "autolink/conf/conf.hpp",
+        ],
+        allow_empty = True,
+    ),
+    deps = [
+        ":conf",
+        ":protos",
+        "//tools:atomic",
+        "//tools:dl",
+        "//tools:glog",
+        "//tools:protobuf",
+        "//tools:pthread",
+        "//tools:tinyxml2",
+    ],
+)
+
+alias(
+    name = "cli11",
+    actual = "//thirdparty/CLI11:cli11",
+)
+
+# ---------------------------------------------------------------------------
+# Binaries
+# ---------------------------------------------------------------------------
+
+cc_binary(
+    name = "mainboard",
+    srcs = glob([
+        "autolink/mainboard/*.cpp",
+        "autolink/mainboard/*.hpp",
+    ]),
+    deps = [
+        ":autolink",
+        ":cli11",
+    ],
+)
+
+cc_binary(
+    name = "autolink_cli",
+    srcs = ["autolink/tools/main.cpp"] + glob(
+        [
+            "autolink/tools/cli/*.cpp",
+            "autolink/tools/cli/*.hpp",
+            "autolink/tools/recorder/**/*.cpp",
+            "autolink/tools/recorder/**/*.hpp",
+            "autolink/tools/monitor/**/*.cpp",
+            "autolink/tools/monitor/**/*.hpp",
+        ],
+        exclude = ["**/main.cpp"],
+    ),
+    deps = [
+        ":autolink",
+        ":cli11",
+        "//tools:curses",
+    ],
+)

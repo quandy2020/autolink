@@ -39,7 +39,8 @@ void PlayTask::Play() {
     }
 
     if (!writer_->Write(msg_)) {
-        AERROR << "write message failed, channel: " << channel_name_
+        // Common while UI readers are still joining topology at play start.
+        ADEBUG << "write message failed, channel: " << channel_name_
                << ", played num: " << played_msg_num_.load()
                << ", real time: " << msg_real_time_ns_
                << ", play time: " << msg_play_time_ns_;
