@@ -44,11 +44,18 @@ genrule(
     name = "generate_protos",
     srcs = PROTO_FILES,
     outs = PROTO_HDRS + PROTO_SRCS,
+    # Works both as main workspace and as local_path_override external.
     # Multiple outs → $(@D) is the package genfiles root.
     cmd = """
+      proto_dir=$$(dirname $$(echo $(SRCS) | awk '{print $$1}'))
       mkdir -p $(@D)/autolink/proto
-      /usr/local/bin/protoc \
-        --proto_path=autolink/proto \
+      if [[ -x /usr/local/bin/protoc ]]; then
+        protoc=/usr/local/bin/protoc
+      else
+        protoc=$$(command -v protoc)
+      fi
+      "$${protoc}" \
+        --proto_path="$${proto_dir}" \
         --cpp_out=$(@D)/autolink/proto \
         $(SRCS)
     """,
@@ -58,7 +65,7 @@ cc_library(
     name = "protos",
     srcs = PROTO_SRCS,
     hdrs = PROTO_HDRS,
-    deps = ["//tools:protobuf"],
+    deps = ["//tools/bazel:protobuf"],
 )
 
 # ---------------------------------------------------------------------------
@@ -103,18 +110,29 @@ cc_library(
     deps = [
         ":conf",
         ":protos",
-        "//tools:atomic",
-        "//tools:dl",
-        "//tools:glog",
-        "//tools:protobuf",
-        "//tools:pthread",
-        "//tools:tinyxml2",
+        "//tools/bazel:atomic",
+        "//tools/bazel:dl",
+        "//tools/bazel:glog",
+        "//tools/bazel:protobuf",
+        "//tools/bazel:pthread",
+        "//tools/bazel:tinyxml2",
     ],
 )
 
 alias(
     name = "cli11",
     actual = "//thirdparty/CLI11:cli11",
+)
+
+# ---------------------------------------------------------------------------
+# Recorder player  (used by Autoviz playback; not part of core :autolink)
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "recorder_player",
+    srcs = glob(["autolink/tools/recorder/player/*.cpp"]),
+    hdrs = glob(["autolink/tools/recorder/player/*.hpp"]),
+    deps = [":autolink"],
 )
 
 # ---------------------------------------------------------------------------
@@ -149,6 +167,6 @@ cc_binary(
     deps = [
         ":autolink",
         ":cli11",
-        "//tools:curses",
+        "//tools/bazel:curses",
     ],
 )

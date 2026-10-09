@@ -95,7 +95,8 @@ void PlayTaskProducer::Start() {
 }
 
 void PlayTaskProducer::Stop() {
-    if (!is_stopped_.exchange(true)) {
+    // Same polarity as PlayTaskConsumer::Stop (exchange returns previous value).
+    if (is_stopped_.exchange(true)) {
         return;
     }
     if (produce_th_ != nullptr && produce_th_->joinable()) {
