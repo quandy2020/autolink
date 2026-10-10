@@ -157,11 +157,6 @@ function install_ros2_packages() {
     apt-get install -y ros-${ROS_DISTRO}-plotjuggler
     apt-get install -y ros-${ROS_DISTRO}-plotjuggler-ros
 
-
-    # Foxglove SDK
-    info "Installing Foxglove SDK..."
-    apt-get install -y ros-${ROS_DISTRO}-foxglove-sdk
-
     info "ROS 2 packages installed successfully."
 }
 

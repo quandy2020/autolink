@@ -16,7 +16,6 @@
 
 #include <fcntl.h>
 #include <sys/wait.h>
-#include <tinyxml2.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -29,6 +28,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "pugixml.hpp"
 
 namespace launch_cli {
 
@@ -93,12 +94,12 @@ std::string GetLogDir() {
 // ---------------------------------------------------------------------------
 // XML helpers (match Python get_param_value / get_param_list)
 // ---------------------------------------------------------------------------
-std::string GetParamValue(const tinyxml2::XMLElement* module, const char* key,
+std::string GetParamValue(const pugi::xml_node& module, const char* key,
                           const std::string& default_value = "") {
-    const tinyxml2::XMLElement* el = module->FirstChildElement(key);
-    if (!el || !el->GetText())
+    const pugi::xml_node el = module.child(key);
+    const char* t = el ? el.text().get() : nullptr;
+    if (!t || t[0] == '\0')
         return default_value;
-    const char* t = el->GetText();
     std::string s(t);
     // strip whitespace
     size_t start = s.find_first_not_of(" \t\n\r");
@@ -109,14 +110,14 @@ std::string GetParamValue(const tinyxml2::XMLElement* module, const char* key,
         start, end == std::string::npos ? std::string::npos : end - start + 1);
 }
 
-std::vector<std::string> GetParamList(const tinyxml2::XMLElement* module,
+std::vector<std::string> GetParamList(const pugi::xml_node& module,
                                       const char* key) {
     std::vector<std::string> list;
-    for (const tinyxml2::XMLElement* el = module->FirstChildElement(key); el;
-         el = el->NextSiblingElement(key)) {
-        if (!el->GetText())
+    for (pugi::xml_node el = module.child(key); el; el = el.next_sibling(key)) {
+        const char* t = el.text().get();
+        if (!t || t[0] == '\0')
             continue;
-        std::string s(el->GetText());
+        std::string s(t);
         size_t start = s.find_first_not_of(" \t\n\r");
         if (start == std::string::npos)
             continue;
@@ -355,15 +356,16 @@ bool RunMonitor() {
     return true;
 }
 
-void ApplyEnvironment(const tinyxml2::XMLElement* root) {
-    const tinyxml2::XMLElement* env = root->FirstChildElement("environment");
+void ApplyEnvironment(const pugi::xml_node& root) {
+    const pugi::xml_node env = root.child("environment");
     if (!env)
         return;
-    for (const tinyxml2::XMLElement* var = env->FirstChildElement(); var;
-         var = var->NextSiblingElement()) {
-        const char* tag = var->Value();
-        const char* text = var->GetText();
-        if (tag && text)
+    for (pugi::xml_node var = env.first_child(); var; var = var.next_sibling()) {
+        if (var.type() != pugi::node_element)
+            continue;
+        const char* tag = var.name();
+        const char* text = var.text().get();
+        if (tag && tag[0] != '\0' && text && text[0] != '\0')
             setenv(tag, text, 1);
     }
 }
@@ -381,13 +383,13 @@ int Start(const std::string& launch_file) {
     LogInfo("Launch file [" + path + "]");
     LogInfo(std::string(120, '='));
 
-    tinyxml2::XMLDocument doc;
-    if (doc.LoadFile(path.c_str()) != tinyxml2::XML_SUCCESS) {
+    pugi::xml_document doc;
+    if (!doc.load_file(path.c_str())) {
         LogError("Parse xml failed. illegal xml!");
         return 1;
     }
 
-    const tinyxml2::XMLElement* root = doc.RootElement();
+    const pugi::xml_node root = doc.document_element();
     if (!root) {
         LogError("No root element in launch file.");
         return 1;
@@ -395,8 +397,8 @@ int Start(const std::string& launch_file) {
 
     ApplyEnvironment(root);
 
-    for (const tinyxml2::XMLElement* module = root->FirstChildElement("module");
-         module; module = module->NextSiblingElement("module")) {
+    for (pugi::xml_node module = root.child("module"); module;
+         module = module.next_sibling("module")) {
         std::string module_name = GetParamValue(module, "name");
         std::string process_name =
             GetParamValue(module, "process_name",
@@ -462,7 +464,7 @@ int Start(const std::string& launch_file) {
             pe.binary_path = g_binary_name;
             pe.dag_list = dag_list;
             pe.plugin_list = GetParamList(module, "plugin");
-            const char* extra = module->Attribute("extra_args");
+            const char* extra = module.attribute("extra_args").as_string(nullptr);
             if (extra) {
                 std::string ex(extra);
                 size_t pos = 0;

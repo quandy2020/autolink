@@ -15,13 +15,13 @@
  *****************************************************************************/
 #include "autolink/plugin_manager/plugin_description.hpp"
 
-#include <tinyxml2.h>
-
 #include <map>
 #include <memory>
 #include <regex>
 #include <string>
 #include <utility>
+
+#include "pugixml.hpp"
 
 #include "autolink/common/environment.hpp"
 #include "autolink/common/file.hpp"
@@ -73,15 +73,19 @@ bool PluginDescription::ParseFromDescriptionFile(const std::string& file_path) {
         return false;
     }
 
-    tinyxml2::XMLDocument doc;
-    if (doc.LoadFile(this->actual_description_path_.c_str()) !=
-        tinyxml2::XML_SUCCESS) {
+    pugi::xml_document doc;
+    if (!doc.load_file(this->actual_description_path_.c_str())) {
         AWARN << "plugin description[" << file_path << "] name[" << this->name_
               << "] invalid, parse description file failed";
         return false;
     }
-    const tinyxml2::XMLElement* root = doc.RootElement();
-    this->library_path_ = root->Attribute("path");
+    const pugi::xml_node root = doc.document_element();
+    if (!root || !root.attribute("path")) {
+        AWARN << "plugin description[" << file_path << "] name[" << this->name_
+              << "] invalid, parse description file failed";
+        return false;
+    }
+    this->library_path_ = root.attribute("path").as_string();
 
     std::string plugin_name =
         std::regex_replace(this->library_path_, std::regex("/"), "__");
@@ -91,12 +95,11 @@ bool PluginDescription::ParseFromDescriptionFile(const std::string& file_path) {
 
     // process class name and base class name from description file, this will
     // be used to build index fo lazy load
-    for (const tinyxml2::XMLElement* class_element =
-             root->FirstChildElement("class");
-         class_element != nullptr;
-         class_element = class_element->NextSiblingElement("class")) {
-        std::string class_name = class_element->Attribute("type");
-        std::string base_class_name = class_element->Attribute("base_class");
+    for (pugi::xml_node class_element = root.child("class"); class_element;
+         class_element = class_element.next_sibling("class")) {
+        std::string class_name = class_element.attribute("type").as_string();
+        std::string base_class_name =
+            class_element.attribute("base_class").as_string();
 
         if (this->class_name_base_class_name_map_.find(class_name) !=
             this->class_name_base_class_name_map_.end()) {

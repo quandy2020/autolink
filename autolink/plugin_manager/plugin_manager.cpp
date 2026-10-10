@@ -17,7 +17,6 @@
 #include "autolink/plugin_manager/plugin_manager.hpp"
 
 #include <dirent.h>
-#include <tinyxml2.h>
 #include <unistd.h>
 
 #include <memory>
@@ -25,6 +24,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "pugixml.hpp"
 
 #include "autolink/common/environment.hpp"
 #include "autolink/common/file.hpp"
@@ -38,15 +39,19 @@ PluginManager::~PluginManager() {}
 
 bool PluginManager::ProcessPluginDescriptionFile(const std::string& file_path,
                                                  std::string* library_path) {
-    tinyxml2::XMLDocument doc;
-    if (doc.LoadFile(file_path.c_str()) != tinyxml2::XML_SUCCESS) {
+    pugi::xml_document doc;
+    if (!doc.load_file(file_path.c_str())) {
         AWARN << "fail to process file " << file_path;
         return false;
     }
-    const tinyxml2::XMLElement* root = doc.RootElement();
+    const pugi::xml_node root = doc.document_element();
+    if (!root) {
+        AWARN << "fail to process file " << file_path;
+        return false;
+    }
 
     // TODO(liangjinping): parse as struct
-    *library_path = root->Attribute("path");
+    *library_path = root.attribute("path").as_string();
 
     // TODO(liangjinping): parse description file and do something more
 

@@ -38,7 +38,7 @@ if(DEFINED AUTOLINK_BUILD_TEST AND NOT AUTOLINK_BUILD_TEST)
   set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)
 endif()
 
-# FindGlog and FindTinyXML2 must be visible before package.xml is resolved.
+# FindGlog must be visible before package.xml is resolved.
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 autocmake_project(EXTRAS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AutolinkCompat.cmake")
@@ -54,6 +54,17 @@ set(AUTOLINK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 # Sets AUTOLINK_HAS_FASTDDS. Linking is applied on the library target.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FastDDS.cmake")
+
+# Header-only YAML → fkYAML::fkYAML (not installed with Autolink by default).
+set(FK_YAML_INSTALL OFF)
+add_subdirectory(thirdparty/fkYAML EXCLUDE_FROM_ALL)
+
+# Header-only XML (git submodule → thirdparty/pugixml).
+add_library(pugixml INTERFACE)
+target_include_directories(pugixml INTERFACE
+  "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/pugixml/src")
+target_compile_definitions(pugixml INTERFACE PUGIXML_HEADER_ONLY)
+add_library(pugixml::pugixml ALIAS pugixml)
 
 add_subdirectory(autolink)
 set(_optional "")

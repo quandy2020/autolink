@@ -19,11 +19,6 @@ alias(
     actual = "@com_google_protobuf//:protobuf",
 )
 
-alias(
-    name = "tinyxml2",
-    actual = "@tinyxml2//:tinyxml2",
-)
-
 cc_library(
     name = "pthread",
     linkopts = ["-lpthread"],

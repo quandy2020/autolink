@@ -27,7 +27,6 @@ APT_PACKAGES: List[str] = [
     "wget",
     "ninja-build",
     "build-essential",
-    "libtinyxml2-dev",
     "libprotobuf-dev",
     "protobuf-compiler",
     "python3-pip",

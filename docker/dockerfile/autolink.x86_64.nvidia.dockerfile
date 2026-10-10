@@ -52,7 +52,6 @@ RUN apt-get update && apt-get --no-install-recommends install -y \
     libsdl2-dev \
     libblas-dev \
     liblapack-dev \
-    libtinyxml2-dev \
     liblua5.3-dev \
     ninja-build \
     sphinx \

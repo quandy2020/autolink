@@ -90,7 +90,8 @@ target_include_directories(autolink PUBLIC
   $<BUILD_INTERFACE:${AUTOLINK_BINARY_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-autocmake_link(autolink Threads TinyXML2)
+autocmake_link(autolink Threads)
+target_link_libraries(autolink PRIVATE pugixml::pugixml)
 if(TARGET glog::glog)
   target_link_libraries(autolink PUBLIC glog::glog)
 else()

@@ -34,7 +34,6 @@ RUN apt-get update && apt-get install -y sudo \
     libsdl2-dev \
     libblas-dev \
     liblapack-dev \
-    libtinyxml2-dev \
     liblua5.3-dev \
     ninja-build \
     sphinx \

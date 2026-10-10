@@ -4,3 +4,10 @@
 [submodule "thirdparty/pybind11"]
 	path = thirdparty/pybind11
 	url = https://github.com/pybind/pybind11.git
+[submodule "thirdparty/fkYAML"]
+	path = thirdparty/fkYAML
+	url = https://github.com/fktn-k/fkYAML.git
+	branch = develop
+[submodule "thirdparty/pugixml"]
+	path = thirdparty/pugixml
+	url = https://github.com/zeux/pugixml.git

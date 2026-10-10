@@ -34,7 +34,6 @@ RUN apt-get update && apt-get install -y sudo \
     libceres-dev \
     libblas-dev \
     liblapack-dev \
-    libtinyxml2-dev \
     liblua5.3-dev \
     ninja-build \
     sphinx \

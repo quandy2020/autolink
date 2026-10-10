@@ -117,13 +117,29 @@ cc_library(
         "//tools/bazel:glog",
         "//tools/bazel:protobuf",
         "//tools/bazel:pthread",
-        "//tools/bazel:tinyxml2",
+        ":pugixml",
     ],
 )
 
 alias(
     name = "cli11",
     actual = "//thirdparty/CLI11:cli11",
+)
+
+# Header-only YAML (git submodule → thirdparty/fkYAML, branch develop).
+cc_library(
+    name = "fkYAML",
+    hdrs = glob(["thirdparty/fkYAML/include/**/*.hpp"]),
+    includes = ["thirdparty/fkYAML/include"],
+)
+
+# Header-only XML (git submodule → thirdparty/pugixml).
+cc_library(
+    name = "pugixml",
+    hdrs = ["thirdparty/pugixml/src/pugixml.hpp"],
+    includes = ["thirdparty/pugixml/src"],
+    textual_hdrs = ["thirdparty/pugixml/src/pugixml.cpp"],
+    defines = ["PUGIXML_HEADER_ONLY"],
 )
 
 # ---------------------------------------------------------------------------
@@ -169,6 +185,7 @@ cc_binary(
     deps = [
         ":autolink",
         ":cli11",
+        ":pugixml",
         "//tools/bazel:curses",
     ],
 )

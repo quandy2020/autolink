@@ -25,6 +25,7 @@ set_target_properties(autolink_cli PROPERTIES OUTPUT_NAME autolink)
 target_include_directories(autolink_cli BEFORE PRIVATE
   "${AUTOLINK_ROOT_DIR}"
   "${AUTOLINK_ROOT_DIR}/thirdparty/CLI11/include")
+target_link_libraries(autolink_cli PRIVATE pugixml::pugixml)
 
 find_package(Curses REQUIRED)
 if(TARGET Curses::Curses)
