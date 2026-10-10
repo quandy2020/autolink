@@ -1,6 +1,6 @@
-"""Autolink Bazel toolchains: system / SDK libraries."""
+"""Autolink Bazel toolchains: BCR deps + small system shims."""
 
-load("//tools/bazel:system_libs.bzl", "system_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -8,47 +8,45 @@ exports_files([
     "system_libs.bzl",
 ])
 
-# Prefer /usr/local (docker SDKs) over older distro libraries.
-system_library(
+# Prefer BCR (same pins as root //autonomy) over /usr/local CMake SDKs.
+alias(
     name = "glog",
-    linkopts = [
-        "/usr/local/lib/libglog.so",
-        "-Wl,-rpath,/usr/local/lib",
-    ],
+    actual = "@com_github_google_glog//:glog",
 )
 
-system_library(
+alias(
     name = "protobuf",
-    linkopts = [
-        "/usr/local/lib/libprotobuf.so",
-        "-Wl,-rpath,/usr/local/lib",
-    ],
+    actual = "@com_google_protobuf//:protobuf",
 )
 
-system_library(
+alias(
     name = "tinyxml2",
-    linkopts = ["/usr/lib/x86_64-linux-gnu/libtinyxml2.so"],
+    actual = "@tinyxml2//:tinyxml2",
 )
 
-system_library(
+cc_library(
     name = "pthread",
     linkopts = ["-lpthread"],
+    linkstatic = True,
 )
 
-system_library(
+cc_library(
     name = "atomic",
     linkopts = ["-latomic"],
+    linkstatic = True,
 )
 
-system_library(
+cc_library(
     name = "dl",
     linkopts = ["-ldl"],
+    linkstatic = True,
 )
 
-system_library(
+cc_library(
     name = "curses",
     linkopts = [
         "-lncurses",
         "-lform",
     ],
+    linkstatic = True,
 )
