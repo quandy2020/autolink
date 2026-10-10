@@ -8,3 +8,14 @@ thirdparty/pybind11
 thirdparty/CLI11/tests
 thirdparty/CLI11/docs
 thirdparty/CLI11/examples
+# fkYAML submodule: ignore non-header trees for Bazel.
+thirdparty/fkYAML/tests
+thirdparty/fkYAML/docs
+thirdparty/fkYAML/examples
+thirdparty/fkYAML/tools
+thirdparty/fkYAML/thirdparty
+thirdparty/fkYAML/cmake
+# pugixml submodule: keep src/ for the header-only build.
+thirdparty/pugixml/docs
+thirdparty/pugixml/tests
+thirdparty/pugixml/scripts
