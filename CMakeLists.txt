@@ -66,6 +66,12 @@ target_include_directories(pugixml INTERFACE
 target_compile_definitions(pugixml INTERFACE PUGIXML_HEADER_ONLY)
 add_library(pugixml::pugixml ALIAS pugixml)
 
+# Header-only JSON (git submodule → thirdparty/json). Not installed with Autolink.
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE
+  "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/json/single_include")
+add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
+
 add_subdirectory(autolink)
 set(_optional "")
 if(AUTOLINK_BUILD_PYTHON)

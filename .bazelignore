@@ -19,3 +19,10 @@ thirdparty/fkYAML/cmake
 thirdparty/pugixml/docs
 thirdparty/pugixml/tests
 thirdparty/pugixml/scripts
+# nlohmann/json submodule: keep single_include/ for the header-only build.
+thirdparty/json/tests
+thirdparty/json/docs
+thirdparty/json/benchmarks
+thirdparty/json/cmake
+thirdparty/json/tools
+thirdparty/json/.github

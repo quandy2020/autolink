@@ -142,6 +142,13 @@ cc_library(
     defines = ["PUGIXML_HEADER_ONLY"],
 )
 
+# Header-only JSON (git submodule → thirdparty/json, branch develop).
+cc_library(
+    name = "nlohmann_json",
+    hdrs = glob(["thirdparty/json/single_include/nlohmann/**/*.hpp"]),
+    includes = ["thirdparty/json/single_include"],
+)
+
 # ---------------------------------------------------------------------------
 # Recorder player  (used by Autoviz playback; not part of core :autolink)
 # ---------------------------------------------------------------------------
