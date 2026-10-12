@@ -31,7 +31,6 @@ RUN apt-get update && apt-get install -y sudo \
     wget \
     bc \
     gdb \
-    libsdl2-dev \
     libblas-dev \
     liblapack-dev \
     liblua5.3-dev \
@@ -40,40 +39,26 @@ RUN apt-get update && apt-get install -y sudo \
     python3-pip \
     python3-dev \
     python3-sphinx \
-    libcivetweb-dev \
     libsuitesparse-dev \
     lsb-release \
     libompl-dev \
     libcairo2-dev \
     libboost-all-dev \
-    libasio-dev \
     libncurses5-dev \
     libavcodec-dev \
     libswscale-dev \
-    libpoco-dev \
     libflann-dev \
     libqhull-dev \
-    libpcap0.8 \
-    libpcap0.8-dev \
-    libusb-1.0-0 \
-    libusb-1.0-0-dev \
     libmetis-dev \
-    libyaml-cpp-dev \
     libpcl-dev \
     liboctomap-dev \
     libgraphicsmagick++-dev \
-    libfltk1.3-dev \
     libtool \
     libtiff-dev \
     libcurl4-openssl-dev \
-    libwebsocketpp-dev \
     libeigen3-dev \
-    libsqlite3-dev \
-    libzmq3-dev \
     liburdfdom-dev \
-    libgtk2.0-dev \
     clang-format \
-    sqlite3 \
     stow && \
     rm -rf /var/lib/apt/lists/*
 
@@ -102,7 +87,6 @@ RUN bash /tmp/install/install_gtest.sh
 RUN bash /tmp/install/install_glog.sh
 RUN bash /tmp/install/install_grpc.sh
 RUN bash /tmp/install/install_opencv.sh
-RUN bash /tmp/install/install_nlohmann.sh
 
 # autonomy workspace
 ENV AUTOLINK_WS /workspace/autolink

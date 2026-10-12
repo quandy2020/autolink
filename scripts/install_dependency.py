@@ -38,13 +38,11 @@ APT_PACKAGES: List[str] = [
 THIRDPARTY_SCRIPTS: List[str] = [
     "install_gtest.sh",
     "install_glog.sh",
-    "install_nlohmann.sh",
 ]
 
 SCRIPT_INSTALL_CHECKS: Dict[str, List[str]] = {
     "install_gtest.sh": ["/usr/local/lib/libgtest.a", "/usr/lib/x86_64-linux-gnu/libgtest.a"],
     "install_glog.sh": ["/usr/local/lib/libglog.so", "/usr/lib/x86_64-linux-gnu/libglog.so"],
-    "install_nlohmann.sh": ["/usr/local/include/nlohmann/json.hpp", "/usr/include/nlohmann/json.hpp"],
 }
 
 
@@ -157,7 +155,7 @@ def parse_args() -> argparse.Namespace:
         "--resume-from",
         type=str,
         default=None,
-        help="Resume third-party installation from specific script name (e.g. install_nlohmann.sh).",
+        help="Resume third-party installation from specific script name (e.g. install_glog.sh).",
     )
     parser.add_argument(
         "--skip-installed",
