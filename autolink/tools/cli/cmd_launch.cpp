@@ -266,17 +266,20 @@ void LogError(const std::string& msg) {
 int StartProcess(ProcessEntry& pe) {
     std::vector<std::string> args;
     if (pe.process_type == "binary") {
-        // process_name is full command line (e.g. "binary arg1 arg2")
+        // process_name is full command line (e.g. "binary arg1 arg2").
+        // Whitespace includes newlines so launch XML can wrap long lines.
         std::string name = pe.name;
         size_t pos = 0;
         while (pos < name.size()) {
-            size_t end = name.find_first_of(" \t", pos);
+            size_t end = name.find_first_of(" \t\n\r", pos);
             if (end == std::string::npos)
                 end = name.size();
             if (end > pos)
                 args.push_back(name.substr(pos, end - pos));
             pos = end;
-            while (pos < name.size() && (name[pos] == ' ' || name[pos] == '\t'))
+            while (pos < name.size() &&
+                   (name[pos] == ' ' || name[pos] == '\t' ||
+                    name[pos] == '\n' || name[pos] == '\r'))
                 pos++;
         }
     } else {
