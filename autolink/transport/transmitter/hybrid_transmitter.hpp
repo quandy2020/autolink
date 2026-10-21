@@ -191,8 +191,16 @@ bool HybridTransmitter<M>::Transmit(const MessagePtr& msg,
         auto recv_it = receivers_.find(item.first);
         const bool has_peer =
             recv_it != receivers_.end() && !recv_it->second.empty();
-        if (!has_peer && item.first != OptionalMode::RTPS) {
+        // RTPS: DDS discovery; SHM: write segment even before Autoviz joins so
+        // Argus traj/clouds are not all "Write failed" until a subscriber appears.
+        // INTRA still needs an in-process peer.
+        if (!has_peer && item.first != OptionalMode::RTPS &&
+            item.first != OptionalMode::SHM) {
             continue;
+        }
+        // SHM path requires Enable() first (creates segment).
+        if (!has_peer && item.first == OptionalMode::SHM) {
+            item.second->Enable();
         }
         sent = true;
         if (!item.second->Transmit(msg, msg_info)) {

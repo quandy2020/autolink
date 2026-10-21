@@ -16,6 +16,9 @@
 
 #include "autolink/transport/shm/segment.hpp"
 
+#include <algorithm>
+#include <thread>
+
 #include "autolink/common/log.hpp"
 #include "autolink/common/util.hpp"
 #include "autolink/transport/shm/shm_conf.hpp"
@@ -50,6 +53,25 @@ bool Segment::AcquireBlockToWrite(std::size_t msg_size,
     }
 
     if (msg_size > conf_.ceiling_msg_size()) {
+        // Ceiling tiers top out at MESSAGE_SIZE_MORE. Recreate(msg) when
+        // msg_size is larger still yields the same ceiling — Remove()+Open
+        // then writes past the block (or spins) and starves every peer on
+        // that channel (trajectory / cloud_map "Write failed").
+        const uint64_t max_ceiling = ShmConf::MaxCeilingMessageSize();
+        if (msg_size > max_ceiling) {
+            AERROR << "msg_size: " << msg_size
+                   << " exceeds SHM hard cap " << max_ceiling
+                   << " (ceiling=" << conf_.ceiling_msg_size()
+                   << "); drop write instead of recreate.";
+            return false;
+        }
+        ShmConf next_conf(msg_size);
+        if (next_conf.ceiling_msg_size() <= conf_.ceiling_msg_size()) {
+            AERROR << "msg_size: " << msg_size
+                   << " needs larger SHM but ceiling already "
+                   << conf_.ceiling_msg_size() << "; drop write.";
+            return false;
+        }
         AINFO << "msg_size: " << msg_size
               << " larger than current shm_buffer_size: "
               << conf_.ceiling_msg_size() << " , need recreate.";
@@ -61,10 +83,14 @@ bool Segment::AcquireBlockToWrite(std::size_t msg_size,
         return false;
     }
 
-    uint32_t index = GetNextWritableBlockIndex();
-    writable_block->index = index;
-    writable_block->block = &blocks_[index];
-    writable_block->buf = block_buf_addrs_[index];
+    const int32_t index = GetNextWritableBlockIndex();
+    if (index < 0) {
+        AERROR << "acquire writable shm block failed (all blocks busy).";
+        return false;
+    }
+    writable_block->index = static_cast<uint32_t>(index);
+    writable_block->block = &blocks_[writable_block->index];
+    writable_block->buf = block_buf_addrs_[writable_block->index];
     return true;
 }
 
@@ -80,10 +106,14 @@ bool Segment::AcquireArenaBlockToWrite(std::size_t msg_size,
         Remap();
     }
 
-    uint32_t index = GetNextArenaWritableBlockIndex();
-    writable_block->index = index;
-    writable_block->block = &arena_blocks_[index];
-    writable_block->buf = arena_block_buf_addrs_[index];
+    const int32_t index = GetNextArenaWritableBlockIndex();
+    if (index < 0) {
+        AERROR << "acquire writable arena shm block failed (all blocks busy).";
+        return false;
+    }
+    writable_block->index = static_cast<uint32_t>(index);
+    writable_block->block = &arena_blocks_[writable_block->index];
+    writable_block->buf = arena_block_buf_addrs_[writable_block->index];
     return true;
 }
 
@@ -293,26 +323,39 @@ bool Segment::Recreate(const uint64_t& msg_size) {
     return OpenOrCreate();
 }
 
-uint32_t Segment::GetNextWritableBlockIndex() {
+int32_t Segment::GetNextWritableBlockIndex() {
     const auto block_num = conf_.block_num();
-    while (1) {
+    // Cap retries: all blocks held by slow readers used to spin forever here
+    // (Argus publishing large PointCloud2 + Autoviz reading → 100% CPU, no logs).
+    const uint32_t max_tries = std::max<uint32_t>(block_num * 64u, 256u);
+    for (uint32_t n = 0; n < max_tries; ++n) {
         uint32_t try_idx = state_->FetchAddSeq(1) % block_num;
         if (blocks_[try_idx].TryLockForWrite()) {
-            return try_idx;
+            return static_cast<int32_t>(try_idx);
+        }
+        if ((n & 0x3fu) == 0x3fu) {
+            std::this_thread::yield();
         }
     }
-    return 0;
+    AERROR << "no writable shm block after " << max_tries
+           << " tries (block_num=" << block_num << ")";
+    return -1;
 }
 
-uint32_t Segment::GetNextArenaWritableBlockIndex() {
+int32_t Segment::GetNextArenaWritableBlockIndex() {
     const auto block_num = ShmConf::ARENA_BLOCK_NUM;
-    while (1) {
+    const uint32_t max_tries = std::max<uint32_t>(block_num * 64u, 256u);
+    for (uint32_t n = 0; n < max_tries; ++n) {
         uint32_t try_idx = state_->FetchAddArenaSeq(1) % block_num;
         if (arena_blocks_[try_idx].TryLockForWrite()) {
-            return try_idx;
+            return static_cast<int32_t>(try_idx);
+        }
+        if ((n & 0x3fu) == 0x3fu) {
+            std::this_thread::yield();
         }
     }
-    return 0;
+    AERROR << "no writable arena shm block after " << max_tries << " tries";
+    return -1;
 }
 
 }  // namespace transport

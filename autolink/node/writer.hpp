@@ -187,6 +187,10 @@ void Writer<MessageT>::JoinTheTopology() {
     for (auto& reader : readers) {
         transmitter_->Enable(reader);
     }
+    // Eager-enable SHM/INTRA so publishers (Argus) can Write before Autoviz
+    // subscribes; otherwise every early Write returns false and traj/clouds
+    // appear empty until a late reader joins.
+    transmitter_->Enable();
 
     channel_manager_->Join(this->role_attr_, proto::RoleType::ROLE_WRITER,
                            message::HasSerializer<MessageT>::value);

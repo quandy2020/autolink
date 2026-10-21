@@ -63,7 +63,9 @@ const uint64_t ShmConf::MESSAGE_SIZE_8M = 1024 * 1024 * 8;
 const uint32_t ShmConf::BLOCK_NUM_16M = 16;
 const uint64_t ShmConf::MESSAGE_SIZE_16M = 1024 * 1024 * 16;
 
-const uint32_t ShmConf::BLOCK_NUM_MORE = 8;
+// Was 8: Autoviz holding a few read locks starved Argus writers on large
+// PointCloud2 channels (no /argus/cloud_map|/trajectory for subscribers).
+const uint32_t ShmConf::BLOCK_NUM_MORE = 32;
 const uint64_t ShmConf::MESSAGE_SIZE_MORE = 1024 * 1024 * 32;
 
 uint64_t ShmConf::GetCeilingMessageSize(const uint64_t& real_msg_size) {

@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -93,8 +94,9 @@ protected:
 private:
     bool Remap();
     bool Recreate(const uint64_t& msg_size);
-    uint32_t GetNextWritableBlockIndex();
-    uint32_t GetNextArenaWritableBlockIndex();
+    /** @return locked block index, or -1 if none available (no infinite spin). */
+    int32_t GetNextWritableBlockIndex();
+    int32_t GetNextArenaWritableBlockIndex();
 };
 
 }  // namespace transport

@@ -44,6 +44,11 @@ public:
         return managed_shm_size_;
     }
 
+    /** Largest ceiling tier; messages above this cannot grow the segment. */
+    static uint64_t MaxCeilingMessageSize() {
+        return MESSAGE_SIZE_MORE;
+    }
+
     // For arena msg
     static const uint32_t ARENA_BLOCK_NUM;
     static const uint64_t ARENA_MESSAGE_SIZE;
