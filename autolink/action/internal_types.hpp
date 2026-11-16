@@ -33,12 +33,51 @@ namespace autolink {
 namespace action {
 namespace internal {
 
+// Discovery publishes RPC endpoints only when all four serialization methods
+// exist. String-only wrappers work in-process but are invisible to peers.
+template <typename Derived>
+class EnvelopeSerializer
+{
+public:
+    std::size_t ByteSizeLong() const {
+        std::string bytes;
+        return static_cast<const Derived*>(this)->SerializeToString(&bytes)
+                   ? bytes.size()
+                   : 0;
+    }
+
+    bool SerializeToArray(void* data, int size) const {
+        if (size < 0 || (data == nullptr && size != 0))
+            return false;
+        std::string bytes;
+        if (!static_cast<const Derived*>(this)->SerializeToString(&bytes) ||
+            bytes.size() > static_cast<std::size_t>(size))
+            return false;
+        if (!bytes.empty())
+            std::memcpy(data, bytes.data(), bytes.size());
+        return true;
+    }
+
+    bool ParseFromArray(const void* data, int size) {
+        if (size < 0 || (data == nullptr && size != 0))
+            return false;
+        return static_cast<Derived*>(this)->ParseFromString(
+            size == 0 ? std::string{}
+                      : std::string(static_cast<const char*>(data), size));
+    }
+};
+
 // SendGoal service request - wrapper around protobuf with conversion
 template <typename ActionT>
-class SendGoalRequest
+class SendGoalRequest : public EnvelopeSerializer<SendGoalRequest<ActionT>>
 {
 public:
     SendGoalRequest() {}
+
+    // The wire envelope is shared by C++ protobuf and Python bytes actions.
+    static std::string TypeName() {
+        return proto::SendGoalRequest::descriptor()->full_name();
+    }
 
     // Public members for direct access (compatible with struct usage)
     GoalUUID goal_id;
@@ -102,7 +141,7 @@ public:
 };
 
 // SendGoal service response - wrapper around protobuf
-class SendGoalResponse
+class SendGoalResponse : public EnvelopeSerializer<SendGoalResponse>
 {
 public:
     SendGoalResponse() : accepted(false), stamp(0) {}
@@ -145,7 +184,7 @@ public:
 
 // CancelGoal service request - use protobuf message directly
 // But we need to add conversion methods
-class CancelGoalRequest
+class CancelGoalRequest : public EnvelopeSerializer<CancelGoalRequest>
 {
 public:
     CancelGoalRequest() {}
@@ -187,7 +226,7 @@ public:
 };
 
 // CancelGoal service response - wrapper
-class CancelGoalResponse
+class CancelGoalResponse : public EnvelopeSerializer<CancelGoalResponse>
 {
 public:
     CancelGoalResponse() : goals_canceling(0) {}
@@ -196,15 +235,26 @@ public:
         proto::CancelGoalResponse proto_msg;
         proto_msg.set_return_code(goals_canceling > 0 ? 0
                                                       : 1);  // 0 = ERROR_NONE
-        if (goals_canceling > 0) {
-            // Add goal_id to goals_canceling list if needed
+        for (const auto& uuid : canceling_goal_ids) {
+            proto_msg.add_goals_canceling()->set_uuid(std::string(
+                reinterpret_cast<const char*>(uuid.data()), uuid.size()));
         }
         return proto_msg;
     }
 
     void FromProto(const proto::CancelGoalResponse& proto_msg) {
-        goals_canceling =
-            proto_msg.return_code() == 0 ? proto_msg.goals_canceling_size() : 0;
+        canceling_goal_ids.clear();
+        if (proto_msg.return_code() == 0) {
+            for (const auto& goal : proto_msg.goals_canceling()) {
+                if (goal.uuid().size() != 16) {
+                    continue;
+                }
+                GoalUUID uuid{};
+                std::copy(goal.uuid().begin(), goal.uuid().end(), uuid.begin());
+                canceling_goal_ids.push_back(uuid);
+            }
+        }
+        goals_canceling = static_cast<int32_t>(canceling_goal_ids.size());
     }
 
     bool SerializeToString(std::string* output) const {
@@ -225,10 +275,11 @@ public:
 
     // Public member for direct access
     int32_t goals_canceling;
+    std::vector<GoalUUID> canceling_goal_ids;
 };
 
 // GetResult service request - wrapper
-class GetResultRequest
+class GetResultRequest : public EnvelopeSerializer<GetResultRequest>
 {
 public:
     GetResultRequest() {}
@@ -271,10 +322,14 @@ public:
 
 // GetResult service response - wrapper
 template <typename ActionT>
-class GetResultResponse
+class GetResultResponse : public EnvelopeSerializer<GetResultResponse<ActionT>>
 {
 public:
     GetResultResponse() : status(0) {}
+
+    static std::string TypeName() {
+        return proto::GetResultResponse::descriptor()->full_name();
+    }
 
     // Public members for direct access
     int8_t status;

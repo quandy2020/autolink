@@ -72,7 +72,9 @@ bool Timer::InitTimerTask() {
             auto task = task_weak_ptr.lock();
             if (task) {
                 std::lock_guard<std::mutex> lg(task->mutex);
-                callback();
+                if (!task->cancelled) {
+                    callback();
+                }
             }
         };
     } else {
@@ -84,6 +86,9 @@ bool Timer::InitTimerTask() {
                 return;
             }
             std::lock_guard<std::mutex> lg(task->mutex);
+            if (task->cancelled) {
+                return;
+            }
             auto start = Time::MonoTime().ToNanosecond();
             callback();
             auto end = Time::MonoTime().ToNanosecond();
@@ -155,6 +160,7 @@ void Timer::Stop() {
         auto tmp_task = task_;
         {
             std::lock_guard<std::mutex> lg(tmp_task->mutex);
+            tmp_task->cancelled = true;
             task_.reset();
         }
     }

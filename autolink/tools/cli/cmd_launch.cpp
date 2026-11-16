@@ -15,6 +15,8 @@
  *****************************************************************************/
 
 #include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -36,6 +38,94 @@ namespace launch_cli {
 const char* g_binary_name = "mainboard";
 const int g_default_respawn_limit = 3;
 const int force_stop_timeout_secs = 3;
+// sysexits.h EX_TEMPFAIL: child refused because another instance owns the lock.
+const int g_already_running_exit_code = 75;
+
+static int g_launch_lock_fd = -1;
+
+std::string LaunchLockPath(const std::string& launch_path) {
+    std::string name = launch_path;
+    const size_t slash = name.find_last_of('/');
+    if (slash != std::string::npos) {
+        name = name.substr(slash + 1);
+    }
+    for (char& character : name) {
+        if (character == '/' || character == ' ') {
+            character = '_';
+        }
+    }
+    if (name.empty()) {
+        name = "autolink.launch";
+    }
+    return "/tmp/autolink.launch." + name + ".lock";
+}
+
+int ReadLockPid(int descriptor) {
+    char buffer[64];
+    ssize_t size;
+    do {
+        size = ::pread(descriptor, buffer, sizeof(buffer) - 1, 0);
+    } while (size < 0 && errno == EINTR);
+    if (size <= 0) {
+        return -1;
+    }
+    buffer[size] = '\0';
+    return std::atoi(buffer);
+}
+
+bool AcquireLaunchLock(const std::string& launch_path, std::string* error) {
+    const std::string lock_path = LaunchLockPath(launch_path);
+    const int descriptor =
+        ::open(lock_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    if (descriptor < 0) {
+        if (error != nullptr) {
+            *error = "failed to open launch lock " + lock_path + ": " +
+                     std::strerror(errno);
+        }
+        return false;
+    }
+    if (::flock(descriptor, LOCK_EX | LOCK_NB) != 0) {
+        const int owner = ReadLockPid(descriptor);
+        ::close(descriptor);
+        if (error != nullptr) {
+            *error = "already running";
+            if (owner > 0) {
+                *error += " (pid=" + std::to_string(owner) + ")";
+            }
+            *error += "; stop it first: autolink launch stop " + launch_path;
+        }
+        return false;
+    }
+    const std::string metadata = std::to_string(::getpid()) + "\n";
+    if (::ftruncate(descriptor, 0) != 0 ||
+        ::lseek(descriptor, 0, SEEK_SET) < 0 ||
+        ::write(descriptor, metadata.data(), metadata.size()) < 0) {
+        ::flock(descriptor, LOCK_UN);
+        ::close(descriptor);
+        if (error != nullptr) {
+            *error = "failed to write launch lock " + lock_path;
+        }
+        return false;
+    }
+    g_launch_lock_fd = descriptor;
+    return true;
+}
+
+void ReleaseLaunchLock() {
+    if (g_launch_lock_fd < 0) {
+        return;
+    }
+    ::flock(g_launch_lock_fd, LOCK_UN);
+    ::close(g_launch_lock_fd);
+    g_launch_lock_fd = -1;
+}
+
+int ExitStatusCode(int status) {
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    return -1;
+}
 
 std::vector<std::string> SplitLaunchSearchPath(const std::string& raw) {
     std::vector<std::string> dirs;
@@ -141,6 +231,7 @@ struct ProcessEntry {
     std::string exception_handler;
     int respawn_limit = g_default_respawn_limit;
     int respawn_cnt = 0;
+    int last_status = 0;
     bool started = false;
     double time_of_death = 0;
 
@@ -253,6 +344,7 @@ bool IsAlive(ProcessEntry& pe) {
     if (w == 0)
         return true;
     if (w == pe.pid) {
+        pe.last_status = status;
         pe.time_of_death = static_cast<double>(time(nullptr));
         return false;
     }
@@ -264,14 +356,17 @@ void GetExitState(ProcessEntry& pe) {
         return;
     int status = 0;
     waitpid(pe.pid, &status, WNOHANG);
-    int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    const int code = ExitStatusCode(status);
     std::string cmd;
     for (size_t i = 0; i < pe.args.size(); ++i) {
         if (i)
             cmd += " ";
         cmd += pe.args[i];
     }
-    if (code != 0 && code != -1)
+    if (code == g_already_running_exit_code)
+        LogInfo("Process [" + pe.name +
+                "] exited: another instance is already running.");
+    else if (code != 0 && code != -1)
         LogError("Process [" + pe.name + "] has died [pid " +
                  std::to_string(pe.pid) + ", exit code " +
                  std::to_string(code) + ", cmd " + cmd + "].");
@@ -316,7 +411,11 @@ void CheckCleanup(int* dead_count, bool* all_died) {
         if (!pe.started)
             continue;
 
-        if (pe.exception_handler == "respawn" &&
+        if (ExitStatusCode(pe.last_status) == g_already_running_exit_code) {
+            LogWarn("child process [" + pe.name +
+                    "] already running; skip respawn");
+            (*dead_count)++;
+        } else if (pe.exception_handler == "respawn" &&
             pe.respawn_cnt < pe.respawn_limit) {
             LogWarn("child process [" + pe.name + "][" +
                     std::to_string(pe.pid) + "] exit, respawn!");
@@ -380,18 +479,26 @@ int Start(const std::string& launch_file) {
         return 1;
     }
 
+    std::string lock_error;
+    if (!AcquireLaunchLock(path, &lock_error)) {
+        LogError(lock_error);
+        return 1;
+    }
+
     LogInfo("Launch file [" + path + "]");
     LogInfo(std::string(120, '='));
 
     pugi::xml_document doc;
     if (!doc.load_file(path.c_str())) {
         LogError("Parse xml failed. illegal xml!");
+        ReleaseLaunchLock();
         return 1;
     }
 
     const pugi::xml_node root = doc.document_element();
     if (!root) {
         LogError("No root element in launch file.");
+        ReleaseLaunchLock();
         return 1;
     }
 
@@ -451,6 +558,7 @@ int Start(const std::string& launch_file) {
                 LogError("Start manager [" + process_name +
                          "] failed. Stop all!");
                 StopAll(SIGINT);
+                ReleaseLaunchLock();
                 return 2;
             }
         } else {
@@ -485,6 +593,7 @@ int Start(const std::string& launch_file) {
                 LogError("Start manager [" + process_name +
                          "] failed. Stop all!");
                 StopAll(SIGINT);
+                ReleaseLaunchLock();
                 return 2;
             }
         }
@@ -493,6 +602,7 @@ int Start(const std::string& launch_file) {
 
     if (g_procs.empty()) {
         LogError("No module was found in xml config.");
+        ReleaseLaunchLock();
         return 1;
     }
 
@@ -502,19 +612,35 @@ int Start(const std::string& launch_file) {
         StopAll(SIGINT);
     }
     LogInfo("autolink exit.");
+    ReleaseLaunchLock();
     return 0;
 }
 
 void StopLaunch(const std::string& launch_file) {
-    std::string cmd;
-    if (launch_file.empty()) {
-        cmd = "pkill -INT autolink_launch";
-    } else {
-        cmd = "pkill -INT -f " + launch_file;
+    const std::string path = ResolveLaunchFile(launch_file);
+    if (!path.empty()) {
+        const std::string lock_path = LaunchLockPath(path);
+        const int descriptor = ::open(lock_path.c_str(), O_RDONLY | O_CLOEXEC);
+        if (descriptor >= 0) {
+            const int owner = ReadLockPid(descriptor);
+            ::close(descriptor);
+            if (owner > 1 && owner != ::getpid() &&
+                ::kill(owner, 0) == 0) {
+                LogInfo("Stopping launch pid " + std::to_string(owner));
+                ::kill(owner, SIGINT);
+                for (int i = 0; i < force_stop_timeout_secs * 10; ++i) {
+                    if (::kill(owner, 0) != 0) {
+                        break;
+                    }
+                    usleep(100000);
+                }
+                if (::kill(owner, 0) == 0) {
+                    ::kill(owner, SIGTERM);
+                    usleep(200000);
+                }
+            }
+        }
     }
-    int ret = system(cmd.c_str());
-    (void)ret;
-    sleep(3);
     LogInfo("Stop autolink launch finished.");
 }
 

@@ -345,6 +345,7 @@ void Server<ActionT>::HandleCancelGoal(
         if (goal_handle->NotifyCancelRequestAccepted() ||
             goal_handle->IsCanceling()) {
             ++goals_canceling;
+            response->canceling_goal_ids.push_back(goal_handle->GetGoalId());
         }
     };
 

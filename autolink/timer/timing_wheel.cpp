@@ -52,11 +52,11 @@ void TimingWheel::Tick() {
             if (task) {
                 ADEBUG << "index: " << current_work_wheel_index_
                        << " timer id: " << task->timer_id_;
-                auto* callback =
-                    reinterpret_cast<std::function<void()>*>(&(task->callback));
-                autolink::Async([this, callback] {
+                // Copy the callback: its weak task reference expires on Stop.
+                // A pointer to task->callback can dangle before dispatch.
+                autolink::Async([this, callback = task->callback] {
                     if (this->running_) {
-                        (*callback)();
+                        callback();
                     }
                 });
             }

@@ -32,6 +32,8 @@ struct TimerTask {
     uint64_t next_fire_duration_ms = 0;
     int64_t accumulated_error_ns = 0;
     uint64_t last_execute_time_ns = 0;
+    // Guarded by mutex; queued callbacks must not run after Timer::Stop.
+    bool cancelled = false;
     std::mutex mutex;
 };
 
