@@ -84,7 +84,15 @@ inline const std::string& PyMessageWrap::data() const {
 }
 
 inline bool PyMessageWrap::ParseFromArray(const void* data, int size) {
-    if (data == nullptr || size <= 0) {
+    // Match RawMessage: empty SHM / protobuf3 payloads are valid.
+    if (size < 0) {
+        return false;
+    }
+    if (size == 0) {
+        data_.clear();
+        return true;
+    }
+    if (data == nullptr) {
         return false;
     }
 

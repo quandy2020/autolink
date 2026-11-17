@@ -16,7 +16,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -213,8 +215,15 @@ void ShmDispatcher::AddListener(const RoleAttributes& self_attr,
                                     const MessageInfo& msg_info) {
             auto msg = std::make_shared<MessageT>();
             // TODO(ALL): read config from msg_info
-            RETURN_IF(!message::ParseFromArray(
-                rb->buf, static_cast<int>(rb->block->msg_size()), msg.get()));
+            const uint64_t raw_size = rb->block->msg_size();
+            if (raw_size >
+                static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+                AWARN << "shm msg_size too large: " << raw_size;
+                return;
+            }
+            RETURN_IF(!message::ParseFromArray(rb->buf,
+                                               static_cast<int>(raw_size),
+                                               msg.get()));
             listener(msg, msg_info);
         };
 
@@ -282,8 +291,15 @@ void ShmDispatcher::AddListener(const RoleAttributes& self_attr,
                                     const std::shared_ptr<ReadableBlock>& rb,
                                     const MessageInfo& msg_info) {
             auto msg = std::make_shared<MessageT>();
-            RETURN_IF(!message::ParseFromArray(
-                rb->buf, static_cast<int>(rb->block->msg_size()), msg.get()));
+            const uint64_t raw_size = rb->block->msg_size();
+            if (raw_size >
+                static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+                AWARN << "shm msg_size too large: " << raw_size;
+                return;
+            }
+            RETURN_IF(!message::ParseFromArray(rb->buf,
+                                               static_cast<int>(raw_size),
+                                               msg.get()));
             listener(msg, msg_info);
         };
 

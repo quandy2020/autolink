@@ -92,7 +92,16 @@ struct RawMessage {
     // }
 
     bool ParseFromArray(const void* data, int size) {
-        if (data == nullptr || size <= 0) {
+        // Empty payload (size == 0) is valid: protobuf3 default messages
+        // serialize to zero bytes and SHM still carries MessageInfo after buf.
+        if (size < 0) {
+            return false;
+        }
+        if (size == 0) {
+            message.clear();
+            return true;
+        }
+        if (data == nullptr) {
             return false;
         }
 

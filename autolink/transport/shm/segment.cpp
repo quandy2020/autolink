@@ -72,9 +72,8 @@ bool Segment::AcquireBlockToWrite(std::size_t msg_size,
                    << conf_.ceiling_msg_size() << "; drop write.";
             return false;
         }
-        AINFO << "msg_size: " << msg_size
-              << " larger than current shm_buffer_size: "
-              << conf_.ceiling_msg_size() << " , need recreate.";
+        AINFO_EVERY(20) << "shm recreate msg_size=" << msg_size
+                        << " was=" << conf_.ceiling_msg_size();
         result = Recreate(msg_size);
     }
 

@@ -60,7 +60,12 @@ TEST(RawMessageTest, parse_from_array) {
     RawMessage msg;
     std::string str("parse_from_array");
     EXPECT_FALSE(msg.ParseFromArray(nullptr, static_cast<int>(str.size())));
-    EXPECT_FALSE(msg.ParseFromArray(str.data(), 0));
+    EXPECT_FALSE(msg.ParseFromArray(str.data(), -1));
+    // Empty protobuf3 / SHM payload is valid.
+    EXPECT_TRUE(msg.ParseFromArray(str.data(), 0));
+    EXPECT_TRUE(msg.message.empty());
+    EXPECT_TRUE(msg.ParseFromArray(nullptr, 0));
+    EXPECT_TRUE(msg.message.empty());
 
     EXPECT_TRUE(msg.ParseFromArray(str.data(), static_cast<int>(str.size())));
     EXPECT_EQ(msg.message, str);
