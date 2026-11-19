@@ -12,6 +12,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * @file client.hpp
+ * @brief Native action transport with facade-independent asynchronous ownership.
  */
 
 #pragma once
@@ -19,16 +22,21 @@
 #include <chrono>
 #include <condition_variable>
 #include <functional>
+#include <exception>
+#include <stdexcept>
 #include <future>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "autolink/action/client_goal_handle.hpp"
 #include "autolink/action/exceptions.hpp"
 #include "autolink/action/internal_types.hpp"
+#include "autolink/action/result_response_wait.hpp"
 #include "autolink/action/types.hpp"
 #include "autolink/common/log.hpp"
 #include "autolink/common/macros.hpp"
@@ -80,6 +88,13 @@ public:
 
         /// Function called when the result for the goal is received.
         typename GoalHandle::ResultCallback result_callback;
+
+        /// Register the generated UUID before the request can reach transport.
+        std::function<void(const GoalUUID&)> goal_request_callback;
+        /// A real negative send_goal response; unlike timeout, proves rejection.
+        std::function<void(const GoalUUID&)> goal_rejection_callback;
+        /// Indeterminate transmission/acceptance failure, never a terminal ACK.
+        std::function<void(const GoalUUID&, std::exception_ptr)> goal_error_callback;
     };
 
     /**
@@ -93,15 +108,14 @@ public:
         Init();
     }
 
+    /**
+     * @brief Release subscriptions without invalidating outstanding goal evidence.
+     * Committed workers and cancellation retain Runtime until they finish.
+     * Destruction is not a remote stop; the invocation owner must cancel/drain.
+     */
     virtual ~Client() {
-        std::lock_guard<std::recursive_mutex> guard(goal_handles_mutex_);
-        for (auto& [goal_id, weak_handle] : goal_handles_) {
-            auto goal_handle = weak_handle.lock();
-            if (goal_handle) {
-                goal_handle->Invalidate(UnawareGoalHandleError());
-            }
-        }
-        goal_handles_.clear();
+        feedback_reader_.reset();
+        status_reader_.reset();
     }
 
     /**
@@ -141,6 +155,26 @@ public:
         std::shared_ptr<GoalHandle> goal_handle);
 
     /**
+     * @brief Cancel one generated UUID even when acceptance is still uncertain.
+     * @param goal_id Identity recorded before AsyncSendGoal transmits.
+     * @return Cancel request acceptance, not proof of a terminal goal or stop.
+     * No local handle lookup is needed for an acceptance-timeout request.
+     */
+    std::shared_future<bool> AsyncCancelGoalById(const GoalUUID& goal_id);
+
+    /// Goal-specific cancellation transport independent of this Client facade.
+    using GoalCancel = std::function<std::shared_future<bool>(const GoalUUID&)>;
+    /**
+     * @brief Retain cancellation services for an already registered goal.
+     * @return Callback usable after facade release; no task or BT node is kept.
+     * Cancellation acceptance remains separate from authoritative termination.
+     */
+    GoalCancel MakeGoalCancelCallback() const {
+        const auto runtime = runtime_;
+        return [runtime](const GoalUUID& id) { return CancelById(runtime, id); };
+    }
+
+    /**
      * @brief Asynchronously request cancellation of all goals on the server.
      *
      * Sends a zero goal UUID (ROS 2 cancel-all semantics).
@@ -176,14 +210,40 @@ public:
     }
 
 private:
+    /** @brief Shared transport state which outlives the public Client facade. */
+    struct Runtime {
+        std::shared_ptr<Node> node; ///< Retains the native service infrastructure.
+        std::shared_ptr<autolink::Client<internal::SendGoalRequest<ActionT>,
+                                       internal::SendGoalResponse>> send_goal;
+        ///< Owns the acceptance transport while a worker is pending.
+        std::shared_ptr<autolink::Client<internal::CancelGoalRequest,
+                                       internal::CancelGoalResponse>> cancel_goal;
+        ///< Supports UUID cancellation after late acceptance or facade release.
+        std::shared_ptr<autolink::Client<internal::GetResultRequest,
+                                       internal::GetResultResponse<ActionT>>> get_result;
+        ///< Retains the service which supplies actual terminal results.
+        std::mutex mutex; ///< Registry lock; never held across callbacks/handle methods.
+        std::map<GoalUUID, std::weak_ptr<GoalHandle>> goal_handles;
+        ///< Weak handles avoid result-callback/Runtime ownership cycles.
+    };
+
     bool WaitForActionServerNanoseconds(std::chrono::nanoseconds time_out);
 
     void Init();
 
-    void HandleFeedback(
+    /** @brief Monitor results using shared services without a facade pointer. */
+    static std::shared_future<WrappedResult> StartResultPolling(
+        const std::shared_ptr<Runtime>& runtime, std::shared_ptr<GoalHandle> goal_handle,
+        typename GoalHandle::ResultCallback result_callback);
+    /** @brief Initiate UUID cancellation using retained services outside locks. */
+    static std::shared_future<bool> CancelById(
+        const std::shared_ptr<Runtime>& runtime, const GoalUUID& goal_id);
+    /** @brief Dispatch feedback outside the handle registry mutex. */
+    static void HandleFeedback(const std::shared_ptr<Runtime>& runtime,
         const std::shared_ptr<internal::FeedbackMessage<ActionT>>&
             feedback_msg);
-    void HandleStatus(
+    /** @brief Apply status without holding the registry lock across a handle. */
+    static void HandleStatus(const std::shared_ptr<Runtime>& runtime,
         const std::shared_ptr<internal::StatusMessage>& status_msg);
 
     std::shared_ptr<Node> node_;
@@ -205,9 +265,8 @@ private:
         feedback_reader_;
     std::shared_ptr<Reader<internal::StatusMessage>> status_reader_;
 
-    // Goal handles
-    std::map<GoalUUID, std::weak_ptr<GoalHandle>> goal_handles_;
-    mutable std::recursive_mutex goal_handles_mutex_;
+    std::shared_ptr<Runtime> runtime_{std::make_shared<Runtime>()};
+    ///< Workers and cancellation own this state; it retains no Client facade.
 };
 
 template <typename ActionT>
@@ -229,9 +288,15 @@ void Client<ActionT>::Init() {
             action_name_ + "/get_result");
 
     // Create feedback reader
-    // Use std::bind to avoid lambda type issues in C++11
-    auto feedback_callback = std::bind(&Client<ActionT>::HandleFeedback, this,
-                                       std::placeholders::_1);
+    runtime_->node = node_;
+    runtime_->send_goal = send_goal_client_;
+    runtime_->cancel_goal = cancel_goal_client_;
+    runtime_->get_result = get_result_client_;
+    const std::weak_ptr<Runtime> weak_runtime = runtime_;
+    auto feedback_callback = [weak_runtime](
+        const std::shared_ptr<internal::FeedbackMessage<ActionT>>& message) {
+        if (auto runtime = weak_runtime.lock()) HandleFeedback(runtime, message);
+    };
     std::string feedback_channel = action_name_ + "/feedback";
     feedback_reader_ = node_->CreateReader<internal::FeedbackMessage<ActionT>>(
         feedback_channel, feedback_callback);
@@ -240,129 +305,73 @@ void Client<ActionT>::Init() {
     }
 
     // Create status reader
-    auto status_callback =
-        std::bind(&Client<ActionT>::HandleStatus, this, std::placeholders::_1);
+    auto status_callback = [weak_runtime](
+        const std::shared_ptr<internal::StatusMessage>& message) {
+        if (auto runtime = weak_runtime.lock()) HandleStatus(runtime, message);
+    };
     status_reader_ = node_->CreateReader<internal::StatusMessage>(
         action_name_ + "/status", status_callback);
 }
 
 template <typename ActionT>
 std::shared_future<std::shared_ptr<typename Client<ActionT>::GoalHandle>>
-Client<ActionT>::AsyncSendGoal(const Goal& goal,
-                               const SendGoalOptions& options) {
-    auto promise =
-        std::make_shared<std::promise<std::shared_ptr<GoalHandle>>>();
-    std::shared_future<std::shared_ptr<GoalHandle>> future(
-        promise->get_future());
-
-    // Generate goal UUID
-    GoalUUID goal_id = GenerateGoalUUID();
-
-    // Create request
-    auto request = std::make_shared<internal::SendGoalRequest<ActionT>>();
-    request->goal_id = goal_id;
-    request->goal = goal;
-
-    // Send request
-    ADEBUG << "AsyncSendGoal: sending goal request for goal ID: "
-           << ToString(goal_id);
-    auto response_future = send_goal_client_->AsyncSendRequest(request);
-    ADEBUG << "AsyncSendGoal: request sent, waiting for response...";
-    // Note: std::shared_future doesn't have then() in C++11/14
-    // We'll use a thread or callback approach instead
-    std::thread([this, promise, goal_id, options, request, response_future]() {
-        try {
-            if (!response_future.valid()) {
-                AERROR << "AsyncSendGoal: send_goal Transmit failed for goal ID: "
-                       << ToString(goal_id);
-                promise->set_value(nullptr);
-                if (options.goal_response_callback) {
-                    options.goal_response_callback(nullptr);
+Client<ActionT>::AsyncSendGoal(const Goal& goal, const SendGoalOptions& options) {
+    const auto runtime = runtime_;
+    auto promise = std::make_shared<std::promise<std::shared_ptr<GoalHandle>>>();
+    auto future = promise->get_future().share();
+    const GoalUUID goal_id = GenerateGoalUUID();
+    // These notifications are task-owned and must not escape a transport worker.
+    const auto notify_response = [options](std::shared_ptr<GoalHandle> handle) {
+        try { if (options.goal_response_callback) options.goal_response_callback(std::move(handle)); }
+        catch (...) { AERROR << "goal response callback threw"; }
+    };
+    const auto notify_error = [options, goal_id, promise, notify_response](std::exception_ptr error) {
+        try { if (options.goal_error_callback) options.goal_error_callback(goal_id, error); }
+        catch (...) { AERROR << "goal error callback threw"; }
+        try { promise->set_exception(error); } catch (...) {}
+        notify_response(nullptr);  // Legacy callback; error is not rejection.
+    };
+    try {
+        if (options.goal_request_callback) options.goal_request_callback(goal_id);
+        auto request = std::make_shared<internal::SendGoalRequest<ActionT>>();
+        request->goal_id = goal_id;
+        request->goal = goal;
+        if (!runtime->send_goal) throw std::runtime_error("send_goal transport unavailable");
+        auto response_future = runtime->send_goal->AsyncSendRequest(request);
+        std::thread([runtime, promise, goal_id, options, response_future,
+                     notify_response, notify_error]() {
+            try {
+                if (!response_future.valid())
+                    throw std::runtime_error("send_goal transport returned an invalid future");
+                if (response_future.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+                    throw std::runtime_error("send_goal acceptance timeout; remote state unknown");
+                const auto response = response_future.get();
+                if (!response) throw std::runtime_error("send_goal null transport response");
+                if (!response->accepted) {
+                    try {
+                        if (options.goal_rejection_callback) options.goal_rejection_callback(goal_id);
+                    } catch (...) { AERROR << "goal rejection callback threw"; }
+                    promise->set_value(nullptr);
+                    notify_response(nullptr);
+                    return;
                 }
-                return;
-            }
-            ADEBUG << "AsyncSendGoal: waiting for response for goal ID: "
-                   << ToString(goal_id);
-            // Wait for response with timeout
-            auto status = response_future.wait_for(std::chrono::seconds(10));
-            if (status == std::future_status::timeout) {
-                AERROR << "AsyncSendGoal: timeout waiting for response for "
-                          "goal ID: "
-                       << ToString(goal_id);
-                promise->set_value(nullptr);
-                if (options.goal_response_callback) {
-                    options.goal_response_callback(nullptr);
+                GoalInfo info;
+                info.goal_id = goal_id;
+                info.stamp = response->stamp;
+                auto handle = std::make_shared<GoalHandle>(
+                    info, options.feedback_callback, options.result_callback);
+                {
+                    std::lock_guard<std::mutex> lock(runtime->mutex);
+                    runtime->goal_handles[goal_id] = handle;
                 }
-                return;
-            }
-
-            auto response = response_future.get();
-            ADEBUG << "AsyncSendGoal: received response for goal ID: "
-                   << ToString(goal_id);
-
-            if (!response) {
-                AERROR << "AsyncSendGoal: received null response for goal ID: "
-                       << ToString(goal_id);
-                promise->set_value(nullptr);
-                if (options.goal_response_callback) {
-                    options.goal_response_callback(nullptr);
-                }
-                return;
-            }
-
-            if (!response->accepted) {
-                AWARN << "AsyncSendGoal: goal rejected for goal ID: "
-                      << ToString(goal_id);
-                promise->set_value(nullptr);
-                if (options.goal_response_callback) {
-                    options.goal_response_callback(nullptr);
-                }
-                return;
-            }
-
-            ADEBUG << "AsyncSendGoal: goal accepted for goal ID: "
-                   << ToString(goal_id);
-
-            // Create goal handle
-            GoalInfo goal_info;
-            goal_info.goal_id = goal_id;
-            goal_info.stamp = response->stamp;
-
-            auto goal_handle = std::make_shared<GoalHandle>(
-                goal_info, options.feedback_callback, options.result_callback);
-
-            {
-                std::lock_guard<std::recursive_mutex> guard(
-                    goal_handles_mutex_);
-                goal_handles_[goal_id] = goal_handle;
-            }
-
-            ADEBUG << "AsyncSendGoal: created goal handle for goal ID: "
-                   << ToString(goal_id);
-
-            // Register get_result polling (sets is_result_aware_) before any
-            // waiter receives the handle; otherwise handle->AsyncGetResult()
-            // can race and throw UnawareGoalHandleError.
-            this->AsyncGetResult(goal_handle, options.result_callback);
-
-            promise->set_value(goal_handle);
-
-            if (options.goal_response_callback) {
-                ADEBUG << "AsyncSendGoal: calling goal_response_callback for "
-                          "goal ID: "
-                       << ToString(goal_id);
-                options.goal_response_callback(goal_handle);
-            }
-        } catch (const std::exception& e) {
-            AERROR << "Error in AsyncSendGoal response for goal ID: "
-                   << ToString(goal_id) << ": " << e.what();
-            promise->set_value(nullptr);
-            if (options.goal_response_callback) {
-                options.goal_response_callback(nullptr);
-            }
-        }
-    }).detach();
-
+                // Install result awareness before either callback or waiter can
+                // query AsyncGetResult. Ownership callbacks may arrive very late.
+                StartResultPolling(runtime, handle, options.result_callback);
+                promise->set_value(handle);
+                notify_response(handle);
+            } catch (...) { notify_error(std::current_exception()); }
+        }).detach();
+    } catch (...) { notify_error(std::current_exception()); }
     return future;
 }
 
@@ -371,9 +380,21 @@ std::shared_future<typename Client<ActionT>::WrappedResult>
 Client<ActionT>::AsyncGetResult(
     std::shared_ptr<GoalHandle> goal_handle,
     typename GoalHandle::ResultCallback result_callback) {
-    std::lock_guard<std::recursive_mutex> lock(goal_handles_mutex_);
-    if (goal_handles_.count(goal_handle->GetGoalId()) == 0) {
-        throw UnknownGoalHandleError();
+    return StartResultPolling(runtime_, std::move(goal_handle), std::move(result_callback));
+}
+
+template <typename ActionT>
+std::shared_future<typename Client<ActionT>::WrappedResult>
+Client<ActionT>::StartResultPolling(
+    const std::shared_ptr<Runtime>& runtime, std::shared_ptr<GoalHandle> goal_handle,
+    typename GoalHandle::ResultCallback result_callback) {
+    if (!goal_handle || !runtime->get_result) throw UnknownGoalHandleError();
+    const auto goal_id = goal_handle->GetGoalId();
+    {
+        std::lock_guard<std::mutex> lock(runtime->mutex);
+        const auto found = runtime->goal_handles.find(goal_id);
+        if (found == runtime->goal_handles.end() || found->second.lock() != goal_handle)
+            throw UnknownGoalHandleError();
     }
 
     if (result_callback) {
@@ -386,14 +407,21 @@ Client<ActionT>::AsyncGetResult(
         return goal_handle->AsyncGetResult();
     }
 
-    std::thread([this, goal_handle]() {
+    std::thread([runtime, goal_handle, goal_id]() {
         try {
             while (goal_handle->IsResultAware()) {
                 auto request = std::make_shared<internal::GetResultRequest>();
                 request->goal_id = goal_handle->GetGoalId();
 
                 auto response_future =
-                    get_result_client_->AsyncSendRequest(request);
+                    runtime->get_result->AsyncSendRequest(request);
+
+                // A locally invalidated/completed handle must not remain stuck
+                // inside get() on a response which may never arrive. Retained
+                // long-running goals continue to wait without a fake timeout.
+                if (!internal::WaitForResultResponse(response_future, [goal_handle] {
+                        return goal_handle->IsResultAware();
+                    })) break;
                 auto response = response_future.get();
                 if (!response) {
                     AWARN << "AsyncGetResult: received null response for goal "
@@ -424,11 +452,11 @@ Client<ActionT>::AsyncGetResult(
                            << " with code: "
                            << static_cast<int>(wrapped_result.code);
 
-                    goal_handle->SetResult(wrapped_result);
+                    try { goal_handle->SetResult(wrapped_result); }
+                    catch (...) { AERROR << "terminal delivery callback threw"; }
 
-                    std::lock_guard<std::recursive_mutex> lock(
-                        goal_handles_mutex_);
-                    goal_handles_.erase(goal_handle->GetGoalId());
+                    std::lock_guard<std::mutex> lock(runtime->mutex);
+                    runtime->goal_handles.erase(goal_id);
                     break;
                 }
 
@@ -439,6 +467,18 @@ Client<ActionT>::AsyncGetResult(
         } catch (const std::exception& e) {
             AERROR << "Error in AsyncGetResult response: " << e.what();
             goal_handle->Invalidate(UnawareGoalHandleError());
+        } catch (...) {
+            AERROR << "Non-standard exception in AsyncGetResult response";
+            goal_handle->Invalidate(UnawareGoalHandleError());
+        }
+        // Retiring local result monitoring is not remote termination. Remove
+        // only this weak registration so repeated local failures cannot retain
+        // an unbounded registry of expired handles in a long-lived Runtime.
+        {
+            std::lock_guard<std::mutex> lock(runtime->mutex);
+            const auto found = runtime->goal_handles.find(goal_id);
+            if (found != runtime->goal_handles.end() && found->second.lock() == goal_handle)
+                runtime->goal_handles.erase(found);
         }
     }).detach();
 
@@ -448,44 +488,45 @@ Client<ActionT>::AsyncGetResult(
 template <typename ActionT>
 std::shared_future<bool> Client<ActionT>::AsyncCancelGoal(
     std::shared_ptr<GoalHandle> goal_handle) {
-    std::lock_guard<std::recursive_mutex> lock(goal_handles_mutex_);
-    if (goal_handles_.count(goal_handle->GetGoalId()) == 0) {
-        throw UnknownGoalHandleError();
-    }
+    if (!goal_handle) throw UnknownGoalHandleError();
+    return AsyncCancelGoalById(goal_handle->GetGoalId());
+}
 
+template <typename ActionT>
+std::shared_future<bool> Client<ActionT>::AsyncCancelGoalById(const GoalUUID& goal_id) {
+    return CancelById(runtime_, goal_id);
+}
+
+template <typename ActionT>
+std::shared_future<bool> Client<ActionT>::CancelById(
+    const std::shared_ptr<Runtime>& runtime, const GoalUUID& goal_id) {
     auto promise = std::make_shared<std::promise<bool>>();
-    std::shared_future<bool> future(promise->get_future());
-
+    auto future = promise->get_future().share();
     auto request = std::make_shared<internal::CancelGoalRequest>();
-    request->goal_id = goal_handle->GetGoalId();
-
-    auto response_future = cancel_goal_client_->AsyncSendRequest(request);
-    std::thread([promise, response_future]() {
+    request->goal_id = goal_id;
+    if (!runtime->cancel_goal) throw std::runtime_error("cancel_goal transport unavailable");
+    auto response_future = runtime->cancel_goal->AsyncSendRequest(request);
+    std::thread([runtime, promise, response_future]() {
         try {
-            if (!response_future.valid()) {
-                promise->set_value(false);
-                return;
-            }
-            auto response = response_future.get();
+            if (!response_future.valid()) throw std::runtime_error("invalid cancel future");
+            if (response_future.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+                throw std::runtime_error("cancel acknowledgment timeout; remote state unknown");
+            const auto response = response_future.get();
             promise->set_value(response && response->goals_canceling > 0);
-        } catch (const std::exception& e) {
-            AERROR << "Error in AsyncCancelGoal response: " << e.what();
-            try {
-                promise->set_value(false);
-            } catch (...) {
-            }
+        } catch (...) {
+            try { promise->set_exception(std::current_exception()); } catch (...) {}
         }
     }).detach();
-
     return future;
 }
 
 template <typename ActionT>
 std::shared_future<bool> Client<ActionT>::AsyncCancelAllGoals() {
+    const auto runtime = runtime_;
     auto promise = std::make_shared<std::promise<bool>>();
     std::shared_future<bool> future(promise->get_future());
 
-    if (!cancel_goal_client_) {
+    if (!runtime->cancel_goal) {
         promise->set_value(false);
         return future;
     }
@@ -493,13 +534,15 @@ std::shared_future<bool> Client<ActionT>::AsyncCancelAllGoals() {
     auto request = std::make_shared<internal::CancelGoalRequest>();
     request->goal_id = GoalUUID{};
 
-    auto response_future = cancel_goal_client_->AsyncSendRequest(request);
-    std::thread([promise, response_future]() {
+    auto response_future = runtime->cancel_goal->AsyncSendRequest(request);
+    std::thread([runtime, promise, response_future]() {
         try {
             if (!response_future.valid()) {
                 promise->set_value(false);
                 return;
             }
+            if (response_future.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+                throw std::runtime_error("cancel-all acknowledgment timeout; remote state unknown");
             auto response = response_future.get();
             promise->set_value(static_cast<bool>(response));
         } catch (const std::exception& e) {
@@ -540,11 +583,14 @@ bool Client<ActionT>::WaitForActionServerNanoseconds(
     }
 
     auto* topology = service_discovery::TopologyManager::Instance();
-    std::mutex mu;
-    std::condition_variable cv;
+    struct ReadySignal {
+        std::mutex mutex; ///< Protects event-driven readiness waits.
+        std::condition_variable wake; ///< Safe for an already dispatched listener.
+    };
+    const auto signal = std::make_shared<ReadySignal>();
     auto conn = topology->AddChangeListener(
-        [&](const service_discovery::ChangeMsg& /*msg*/) {
-            cv.notify_all();
+        [signal](const service_discovery::ChangeMsg& /*msg*/) {
+            signal->wake.notify_all();
         });
     struct ListenerGuard {
         service_discovery::TopologyManager* topology;
@@ -558,15 +604,15 @@ bool Client<ActionT>::WaitForActionServerNanoseconds(
     const auto deadline =
         std::chrono::steady_clock::now() +
         (forever ? std::chrono::hours(24 * 365) : time_out);
-    std::unique_lock<std::mutex> lock(mu);
+    std::unique_lock<std::mutex> lock(signal->mutex);
     while (forever || std::chrono::steady_clock::now() < deadline) {
         if (ActionServerIsReady()) {
             return true;
         }
         if (forever) {
-            cv.wait_for(lock, std::chrono::milliseconds(50));
+            signal->wake.wait_for(lock, std::chrono::milliseconds(50));
         } else {
-            cv.wait_until(lock, deadline);
+            signal->wake.wait_until(lock, deadline);
         }
     }
     return ActionServerIsReady();
@@ -574,60 +620,55 @@ bool Client<ActionT>::WaitForActionServerNanoseconds(
 
 template <typename ActionT>
 void Client<ActionT>::HandleFeedback(
+    const std::shared_ptr<Runtime>& runtime,
     const std::shared_ptr<internal::FeedbackMessage<ActionT>>& feedback_msg) {
     if (!feedback_msg) {
         AWARN << "HandleFeedback: received null feedback message";
         return;
     }
 
-    std::lock_guard<std::recursive_mutex> guard(goal_handles_mutex_);
     const GoalUUID& goal_id = feedback_msg->goal_id;
     ADEBUG << "HandleFeedback: received feedback message for goal ID: "
            << ToString(goal_id);
-    if (goal_handles_.count(goal_id) == 0) {
-        // Common after cancel/preempt: server still publishes a few frames for
-        // the retired goal. Not actionable at WARN rate (~control Hz).
-        ADEBUG << "HandleFeedback: received feedback for unknown goal ID: "
-               << ToString(goal_id) << ". Ignoring...";
-        return;
-    }
-
-    auto goal_handle = goal_handles_[goal_id].lock();
-    if (!goal_handle) {
-        ADEBUG << "HandleFeedback: goal handle expired for goal ID: "
-               << ToString(goal_id) << ". Removing from map.";
-        goal_handles_.erase(goal_id);
-        return;
+    std::shared_ptr<GoalHandle> goal_handle;
+    {
+        std::lock_guard<std::mutex> lock(runtime->mutex);
+        const auto found = runtime->goal_handles.find(goal_id);
+        if (found == runtime->goal_handles.end()) return;
+        goal_handle = found->second.lock();
+        if (!goal_handle) {
+            runtime->goal_handles.erase(found);
+            return;
+        }
     }
 
     auto feedback = std::make_shared<Feedback>(feedback_msg->feedback);
     ADEBUG << "HandleFeedback: calling feedback callback for goal ID: "
            << ToString(goal_id) << ", progress: N/A";
-    goal_handle->CallFeedbackCallback(goal_handle, feedback);
+    try { goal_handle->CallFeedbackCallback(goal_handle, feedback); }
+    catch (...) { AERROR << "action feedback callback threw"; }
 }
 
 template <typename ActionT>
 void Client<ActionT>::HandleStatus(
+    const std::shared_ptr<Runtime>& runtime,
     const std::shared_ptr<internal::StatusMessage>& status_msg) {
     if (!status_msg) {
         return;
     }
 
-    std::lock_guard<std::recursive_mutex> guard(goal_handles_mutex_);
-    for (const auto& status_info : status_msg->status_list) {
-        const GoalUUID& goal_id = status_info.goal_id;
-        if (goal_handles_.count(goal_id) == 0) {
-            continue;
+    std::vector<std::pair<std::shared_ptr<GoalHandle>, int8_t>> updates;
+    {
+        std::lock_guard<std::mutex> lock(runtime->mutex);
+        for (const auto& status_info : status_msg->status_list) {
+            const auto found = runtime->goal_handles.find(status_info.goal_id);
+            if (found == runtime->goal_handles.end()) continue;
+            if (auto handle = found->second.lock())
+                updates.emplace_back(std::move(handle), status_info.status);
+            else runtime->goal_handles.erase(found);
         }
-
-        auto goal_handle = goal_handles_[goal_id].lock();
-        if (!goal_handle) {
-            goal_handles_.erase(goal_id);
-            continue;
-        }
-
-        goal_handle->SetStatus(status_info.status);
     }
+    for (const auto& update : updates) update.first->SetStatus(update.second);
 }
 
 }  // namespace action

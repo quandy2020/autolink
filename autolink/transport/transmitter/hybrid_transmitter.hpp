@@ -83,8 +83,16 @@ private:
     void InitReceivers();
     void ClearReceivers();
     void TransmitHistoryMsg(const RoleAttributes& opposite_attr);
-    void ThreadFunc(
-        const RoleAttributes& opposite_attr,
+    /**
+     * @brief Replay an owned history snapshot without retaining the original transmitter.
+     * @param attr Dedicated history-channel attributes copied before scheduling.
+     * @param mode Transport selected while the parent mapping is still alive.
+     * @param participant Shared RTPS participant retained for the replay lifetime.
+     * @param msgs Cached messages whose shared owners survive parent destruction.
+     */
+    static void ThreadFunc(
+        const RoleAttributes& attr, OptionalMode mode,
+        const ParticipantPtr& participant,
         const std::vector<typename History<M>::CachedMessage>& msgs);
     Relation GetRelation(const RoleAttributes& opposite_attr);
 
@@ -341,41 +349,43 @@ void HybridTransmitter<M>::TransmitHistoryMsg(
         return;
     }
 
-    auto attr = opposite_attr;
-    autolink::Async(&HybridTransmitter<M>::ThreadFunc, this, attr, unsent_msgs);
+    // Enable(opposite_attr) holds mutex_: copy every parent-dependent value
+    // before scheduling. The parent can be destroyed before this task runs.
+    RoleAttributes attr;
+    attr.CopyFrom(this->attr_);
+    const std::string channel =
+        std::to_string(this->attr_.id()) + std::to_string(opposite_attr.id());
+    attr.set_channel_name(channel);
+    attr.set_channel_id(common::GlobalData::RegisterChannel(channel));
+    const auto relation = GetRelation(opposite_attr);
+    const auto mode = (relation == NO_RELATION) ? OptionalMode::SHM
+                                               : mapping_table_.at(relation);
+    autolink::Async(&HybridTransmitter<M>::ThreadFunc, attr, mode,
+                   participant_, unsent_msgs);
 }
 
 template <typename M>
 void HybridTransmitter<M>::ThreadFunc(
-    const RoleAttributes& opposite_attr,
+    const RoleAttributes& attr, OptionalMode mode,
+    const ParticipantPtr& participant,
     const std::vector<typename History<M>::CachedMessage>& msgs) {
-    // create transmitter to transmit msgs
-    RoleAttributes new_attr;
-    new_attr.CopyFrom(this->attr_);
-    std::string new_channel_name =
-        std::to_string(this->attr_.id()) + std::to_string(opposite_attr.id());
-    uint64_t channel_id = common::GlobalData::RegisterChannel(new_channel_name);
-    new_attr.set_channel_name(new_channel_name);
-    new_attr.set_channel_id(channel_id);
-
+    // All inputs are owned by the async task; never dereference its old parent.
     TransmitterPtr new_transmitter;
-    const auto relation = GetRelation(opposite_attr);
-    const auto mode = (relation == NO_RELATION) ? OptionalMode::SHM
-                                                : mapping_table_[relation];
 #if AUTOLINK_ENABLE_FASTDDS
     if (mode == OptionalMode::RTPS) {
-        if (participant_ == nullptr) {
+        if (participant == nullptr) {
             AERROR << "HybridTransmitter history: RTPS participant is null.";
             return;
         }
         new_transmitter =
-                std::make_shared<RtpsTransmitter<M>>(new_attr, participant_);
+                std::make_shared<RtpsTransmitter<M>>(attr, participant);
     } else {
-        new_transmitter = std::make_shared<ShmTransmitter<M>>(new_attr);
+        new_transmitter = std::make_shared<ShmTransmitter<M>>(attr);
     }
 #else
     (void)mode;
-    new_transmitter = std::make_shared<ShmTransmitter<M>>(new_attr);
+    (void)participant;
+    new_transmitter = std::make_shared<ShmTransmitter<M>>(attr);
 #endif
     new_transmitter->Enable();
 

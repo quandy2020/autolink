@@ -14,6 +14,10 @@
  * limitations under the License.
  *****************************************************************************/
 
+/** @file shm_receiver.hpp
+ * @brief Shared-memory reception using callbacks that survive dispatcher copies safely.
+ */
+
 #pragma once
 
 #include <functional>
@@ -59,6 +63,7 @@ ShmReceiver<M>::ShmReceiver(
 
 template <typename M>
 ShmReceiver<M>::~ShmReceiver() {
+    this->CloseCallbacks();
     DisableAllWriters();
     Disable();
 }
@@ -82,8 +87,7 @@ void ShmReceiver<M>::Enable() {
     }
 
     dispatcher_->AddListener<M>(
-        this->attr_, std::bind(&ShmReceiver<M>::OnNewMessage, this,
-                               std::placeholders::_1, std::placeholders::_2));
+        this->attr_, this->SnapshotDispatcherListener());
     this->enabled_ = true;
 }
 
@@ -128,8 +132,7 @@ void ShmReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
           << "] from writer (discovery ok)";
     dispatcher_->AddListener<M>(
         this->attr_, opposite_attr,
-        std::bind(&ShmReceiver<M>::OnNewMessage, this, std::placeholders::_1,
-                  std::placeholders::_2));
+        this->SnapshotDispatcherListener());
     enabled_writers_.emplace(writer_id, opposite_attr);
 }
 

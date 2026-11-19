@@ -14,6 +14,10 @@
  * limitations under the License.
  *****************************************************************************/
 
+/** @file rtps_receiver.hpp
+ * @brief RTPS reception using callbacks that survive dispatcher copies safely.
+ */
+
 #pragma once
 
 #include "autolink/common/log.hpp"
@@ -51,6 +55,7 @@ RtpsReceiver<M>::RtpsReceiver(
 
 template <typename M>
 RtpsReceiver<M>::~RtpsReceiver() {
+    this->CloseCallbacks();
     Disable();
 }
 
@@ -61,8 +66,7 @@ void RtpsReceiver<M>::Enable() {
     }
     dispatcher_->AddListener<M>(
             this->attr_,
-            std::bind(&RtpsReceiver<M>::OnNewMessage, this,
-                      std::placeholders::_1, std::placeholders::_2));
+            this->SnapshotDispatcherListener());
     this->enabled_ = true;
 }
 
@@ -79,8 +83,7 @@ template <typename M>
 void RtpsReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
     dispatcher_->AddListener<M>(
             this->attr_, opposite_attr,
-            std::bind(&RtpsReceiver<M>::OnNewMessage, this,
-                      std::placeholders::_1, std::placeholders::_2));
+            this->SnapshotDispatcherListener());
 }
 
 template <typename M>

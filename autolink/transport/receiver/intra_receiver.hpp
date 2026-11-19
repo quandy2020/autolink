@@ -14,6 +14,10 @@
  * limitations under the License.
  *****************************************************************************/
 
+/** @file intra_receiver.hpp
+ * @brief In-process reception using callbacks that survive dispatcher copies safely.
+ */
+
 #pragma once
 
 #include "autolink/common/log.hpp"
@@ -51,6 +55,7 @@ IntraReceiver<M>::IntraReceiver(
 
 template <typename M>
 IntraReceiver<M>::~IntraReceiver() {
+    this->CloseCallbacks();
     Disable();
 }
 
@@ -61,8 +66,7 @@ void IntraReceiver<M>::Enable() {
     }
 
     dispatcher_->AddListener<M>(
-        this->attr_, std::bind(&IntraReceiver<M>::OnNewMessage, this,
-                               std::placeholders::_1, std::placeholders::_2));
+        this->attr_, this->SnapshotDispatcherListener());
     this->enabled_ = true;
 }
 
@@ -86,8 +90,7 @@ void IntraReceiver<M>::Enable(const RoleAttributes& opposite_attr) {
     }
     dispatcher_->AddListener<M>(
         this->attr_, opposite_attr,
-        std::bind(&IntraReceiver<M>::OnNewMessage, this, std::placeholders::_1,
-                  std::placeholders::_2));
+        this->SnapshotDispatcherListener());
 }
 
 template <typename M>

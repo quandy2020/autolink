@@ -12,6 +12,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * @file client_goal_handle.hpp
+ * @brief Native goal evidence with exception-only local invalidation.
  */
 
 #pragma once
@@ -20,6 +23,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 
 #include "autolink/action/exceptions.hpp"
 #include "autolink/action/types.hpp"
@@ -56,9 +60,9 @@ public:
      */
     struct WrappedResult {
         /// The unique identifier of the goal
-        GoalUUID goal_id;
+        GoalUUID goal_id{};
         /// A status to indicate if the goal was canceled, aborted, or succeeded
-        ResultCode code;
+        ResultCode code{static_cast<ResultCode>(0)};
         /// User defined fields sent back with an action
         std::shared_ptr<Result> result;
     };
@@ -163,18 +167,20 @@ private:
     void Invalidate(const UnawareGoalHandleError& ex);
     bool IsInvalidated() const;
 
-    GoalInfo goal_info_;
-    std::exception_ptr invalidate_exception_{nullptr};
+    GoalInfo goal_info_; ///< Immutable identity and remote acceptance timestamp.
+    std::exception_ptr invalidate_exception_{nullptr}; ///< Local uncertainty, never terminal proof.
 
-    bool is_result_aware_{false};
-    std::promise<WrappedResult> result_promise_;
-    std::shared_future<WrappedResult> result_future_;
+    bool is_result_aware_{false}; ///< A native result monitor has been installed.
+    bool promise_settled_{false}; ///< Promise has a remote value or a local exception.
+    bool terminal_received_{false}; ///< Only a matching remote terminal result sets this.
+    std::promise<WrappedResult> result_promise_; ///< One observable value or exception.
+    std::shared_future<WrappedResult> result_future_; ///< Shared immutable result channel.
 
-    FeedbackCallback feedback_callback_{nullptr};
-    ResultCallback result_callback_{nullptr};
-    int8_t status_{static_cast<int8_t>(GoalStatus::ACCEPTED)};
+    FeedbackCallback feedback_callback_{nullptr}; ///< User callback invoked outside locks.
+    ResultCallback result_callback_{nullptr}; ///< Receives actual terminal evidence only.
+    int8_t status_{static_cast<int8_t>(GoalStatus::ACCEPTED)}; ///< Observed remote status.
 
-    mutable std::recursive_mutex handle_mutex_;
+    mutable std::recursive_mutex handle_mutex_; ///< Protects promise, status and callbacks.
 };
 
 template <typename ActionT>
@@ -188,19 +194,14 @@ ClientGoalHandle<ActionT>::ClientGoalHandle(const GoalInfo& goal_info,
 
 template <typename ActionT>
 ClientGoalHandle<ActionT>::~ClientGoalHandle() {
-    // If result hasn't been set, invalidate the promise
-    if (!is_result_aware_) {
-        try {
-            WrappedResult error_result;
-            error_result.goal_id = goal_info_.goal_id;
-            error_result.code = ResultCode::ABORTED;
-            error_result.result = std::make_shared<Result>();
-            status_ = static_cast<int8_t>(GoalStatus::ABORTED);
-            result_promise_.set_value(error_result);
-        } catch (...) {
-            // Ignore exceptions in destructor
+    // Releasing a local handle cannot prove the remote goal has stopped.
+    try {
+        std::lock_guard<std::recursive_mutex> lock(handle_mutex_);
+        if (!promise_settled_) {
+            result_promise_.set_exception(std::make_exception_ptr(UnawareGoalHandleError()));
+            promise_settled_ = true;
         }
-    }
+    } catch (...) {}
 }
 
 template <typename ActionT>
@@ -298,25 +299,47 @@ bool ClientGoalHandle<ActionT>::SetResultAwareness(bool awareness) {
 template <typename ActionT>
 void ClientGoalHandle<ActionT>::SetStatus(int8_t status) {
     std::lock_guard<std::recursive_mutex> lock(handle_mutex_);
+    if (terminal_received_ || status_ == static_cast<int8_t>(GoalStatus::SUCCEEDED) ||
+        status_ == static_cast<int8_t>(GoalStatus::CANCELED) ||
+        status_ == static_cast<int8_t>(GoalStatus::ABORTED)) return;
     status_ = status;
 }
 
 template <typename ActionT>
 void ClientGoalHandle<ActionT>::SetResult(const WrappedResult& wrapped_result) {
-    std::lock_guard<std::recursive_mutex> lock(handle_mutex_);
-    // Align with ROS 2 terminal status codes (ResultCode matches terminal
-    // GoalStatus).
-    status_ = static_cast<int8_t>(wrapped_result.code);
-    result_promise_.set_value(wrapped_result);
-    if (result_callback_) {
-        result_callback_(wrapped_result);
+    const bool terminal = wrapped_result.code == ResultCode::SUCCEEDED ||
+                          wrapped_result.code == ResultCode::CANCELED ||
+                          wrapped_result.code == ResultCode::ABORTED;
+    if (!terminal || wrapped_result.goal_id != goal_info_.goal_id)
+        throw std::runtime_error("result is not a matching remote terminal");
+    ResultCallback callback;
+    {
+        std::lock_guard<std::recursive_mutex> lock(handle_mutex_);
+        if (terminal_received_) return;
+        terminal_received_ = true;
+        status_ = static_cast<int8_t>(wrapped_result.code);
+        if (!promise_settled_) {
+            result_promise_.set_value(wrapped_result);
+            promise_settled_ = true;
+        }
+        callback = result_callback_;
     }
+    // A late real terminal still reaches cancellation ownership even when a
+    // previously reported local exception cannot be replaced in the promise.
+    try { if (callback) callback(wrapped_result); }
+    catch (...) { AERROR << "native result callback threw"; }
 }
 
 template <typename ActionT>
 void ClientGoalHandle<ActionT>::Invalidate(const UnawareGoalHandleError& ex) {
     std::lock_guard<std::recursive_mutex> lock(handle_mutex_);
+    if (terminal_received_) return;
     invalidate_exception_ = std::make_exception_ptr(ex);
+    is_result_aware_ = false;
+    if (!promise_settled_) {
+        result_promise_.set_exception(invalidate_exception_);
+        promise_settled_ = true;
+    }
 }
 
 template <typename ActionT>

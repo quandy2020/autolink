@@ -16,9 +16,14 @@
 
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
+#include <functional>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "autolink/common/types.hpp"
@@ -98,6 +103,12 @@ public:
     void destroy();
 
 private:
+    /** @brief A callback generation remains alive after copied transport listeners retire. */
+    struct CallbackState {
+        std::recursive_mutex mutex;  ///< Closes ingress only after its current callback exits.
+        Service* owner = nullptr;  ///< Guarded owner; null before queued work is drained.
+    };
+
     void HandleRequest(const std::shared_ptr<Request>& request,
                        const transport::MessageInfo& message_info);
 
@@ -128,8 +139,9 @@ private:
     proto::RoleAttributes request_reader_attr_;
     service_discovery::ChannelManagerPtr channel_manager_;
     ChangeConnection change_conn_;
+    std::shared_ptr<CallbackState> callback_state_;  ///< Fresh gate per service Init generation.
 
-    volatile bool inited_ = false;
+    std::atomic<bool> inited_{false};  ///< Publishes worker shutdown without a volatile data race.
     void Enqueue(std::function<void()>&& task);
     void Process();
     std::thread thread_;
@@ -140,11 +152,13 @@ private:
 
 template <typename Request, typename Response>
 void Service<Request, Response>::destroy() {
-    if (!inited_) {
+    if (callback_state_) {
+        std::lock_guard<std::recursive_mutex> lock(callback_state_->mutex);
+        callback_state_->owner = nullptr;
+    }
+    if (!inited_.exchange(false)) {
         return;
     }
-    inited_ = false;
-    LeaveTheTopology();
     {
         std::lock_guard<std::mutex> lg(queue_mutex_);
         this->tasks_.clear();
@@ -153,6 +167,9 @@ void Service<Request, Response>::destroy() {
     if (thread_.joinable()) {
         thread_.join();
     }
+    // An admitted worker may still send its response. Leaving first disables
+    // clients' matching response listeners before that worker can complete.
+    LeaveTheTopology();
     request_receiver_.reset();
     response_transmitter_.reset();
     channel_manager_ = nullptr;
@@ -212,9 +229,20 @@ bool Service<Request, Response>::Init() {
     response_writer_attr_.CopyFrom(role);
     response_writer_attr_.set_id(response_transmitter_->id().HashValue());
 
-    request_callback_ =
-        std::bind(&Service<Request, Response>::HandleRequest, this,
-                  std::placeholders::_1, std::placeholders::_2);
+    callback_state_ = std::make_shared<CallbackState>();
+    callback_state_->owner = this;
+    request_callback_ = [state = callback_state_](
+        const std::shared_ptr<Request>& request,
+        const transport::MessageInfo& message_info) {
+        std::lock_guard<std::recursive_mutex> lock(state->mutex);
+        if (state->owner == nullptr) return;
+        auto* owner = state->owner;
+        // destroy() closes this gate before clearing the queue and joining the
+        // sole worker. An admitted queued task cannot outlive that join.
+        owner->Enqueue([owner, request, message_info] {
+            owner->HandleRequest(request, message_info);
+        });
+    };
 
     role.set_channel_name(request_channel_);
     channel_id = common::GlobalData::RegisterChannel(request_channel_);
@@ -222,18 +250,17 @@ bool Service<Request, Response>::Init() {
     role.set_message_type(message::MessageType<Request>());
     request_receiver_ = transport->CreateReceiver<Request>(
         role,
-        [=](const std::shared_ptr<Request>& request,
+        [callback = request_callback_](const std::shared_ptr<Request>& request,
             const transport::MessageInfo& message_info,
             const proto::RoleAttributes& reader_attr) {
             (void)reader_attr;
-            auto task = [this, request, message_info]() {
-                this->HandleRequest(request, message_info);
-            };
-            Enqueue(std::move(task));
+            callback(request, message_info);
         },
         proto::OptionalMode::HYBRID);
     if (request_receiver_ == nullptr) {
         AERROR << " Create request sub failed." << request_channel_;
+        std::lock_guard<std::recursive_mutex> lock(callback_state_->mutex);
+        callback_state_->owner = nullptr;
         response_transmitter_.reset();
         return false;
     }
@@ -251,9 +278,11 @@ bool Service<Request, Response>::Init() {
 
 template <typename Request, typename Response>
 void Service<Request, Response>::JoinTheTopology() {
-    change_conn_ = channel_manager_->AddChangeListener(std::bind(
-        &Service<Request, Response>::OnChannelChange, this,
-        std::placeholders::_1));
+    change_conn_ = channel_manager_->AddChangeListener(
+        [state = callback_state_](const proto::ChangeMsg& change) {
+            std::lock_guard<std::recursive_mutex> lock(state->mutex);
+            if (state->owner != nullptr) state->owner->OnChannelChange(change);
+        });
 
     std::vector<proto::RoleAttributes> readers;
     channel_manager_->GetReadersOfChannel(response_channel_, &readers);

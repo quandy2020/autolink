@@ -115,6 +115,14 @@ public:
     SharedFuture AsyncSendRequest(SharedRequest request);
 
     /**
+     * @brief Retransmit an outstanding idempotent request with its original identity.
+     * @param request The same shared request passed to AsyncSendRequest; do not mutate it.
+     * @return True when the outstanding message was sent again; false if already retired.
+     * @warning Opt-in only for idempotent services. This creates no promise or sequence.
+     */
+    bool RetransmitRequest(const SharedRequest& request);
+
+    /**
      * @brief Send Request object asynchronously
      */
     SharedFuture AsyncSendRequest(const Request& request);
@@ -155,6 +163,12 @@ public:
     }
 
 private:
+    /** @brief Callback generation whose closed gate outlives copied listeners. */
+    struct CallbackState {
+        std::recursive_mutex mutex;  ///< Waits for an active callback before closing its owner.
+        Client* owner = nullptr;  ///< Accessed only while mutex is held; null after retirement.
+    };
+
     void HandleResponse(const std::shared_ptr<Response>& response,
                         const transport::MessageInfo& request_info);
 
@@ -173,9 +187,10 @@ private:
         response_callback_;
 
     std::unordered_map<uint64_t,
-                       std::tuple<SharedPromise, CallbackType, SharedFuture>>
+                       std::tuple<SharedPromise, CallbackType, SharedFuture, SharedRequest>>
         pending_requests_;
     std::mutex pending_requests_mutex_;
+    std::shared_ptr<CallbackState> callback_state_;  ///< Fresh gate per Init; old callbacks stay closed.
 
     std::shared_ptr<transport::Transmitter<Request>> request_transmitter_;
     std::shared_ptr<transport::Receiver<Response>> response_receiver_;
@@ -193,6 +208,10 @@ private:
 
 template <typename Request, typename Response>
 void Client<Request, Response>::Destroy() {
+    if (callback_state_) {
+        std::lock_guard<std::recursive_mutex> lock(callback_state_->mutex);
+        callback_state_->owner = nullptr;
+    }
     if (!IsInit()) {
         return;
     }
@@ -233,9 +252,14 @@ bool Client<Request, Response>::Init() {
     request_writer_attr_.CopyFrom(role);
     request_writer_attr_.set_id(writer_id_.HashValue());
 
-    response_callback_ =
-        std::bind(&Client<Request, Response>::HandleResponse, this,
-                  std::placeholders::_1, std::placeholders::_2);
+    callback_state_ = std::make_shared<CallbackState>();
+    callback_state_->owner = this;
+    response_callback_ = [state = callback_state_](
+        const std::shared_ptr<Response>& response,
+        const transport::MessageInfo& message_info) {
+        std::lock_guard<std::recursive_mutex> lock(state->mutex);
+        if (state->owner != nullptr) state->owner->HandleResponse(response, message_info);
+    };
 
     role.set_channel_name(response_channel_);
     channel_id = common::GlobalData::RegisterChannel(response_channel_);
@@ -243,15 +267,17 @@ bool Client<Request, Response>::Init() {
     role.set_message_type(message::MessageType<Response>());
     response_receiver_ = transport->CreateReceiver<Response>(
         role,
-        [=](const std::shared_ptr<Response>& response,
+        [callback = response_callback_](const std::shared_ptr<Response>& response,
             const transport::MessageInfo& message_info,
             const proto::RoleAttributes& reader_attr) {
             (void)reader_attr;
-            response_callback_(response, message_info);
+            callback(response, message_info);
         },
         proto::OptionalMode::HYBRID);
     if (response_receiver_ == nullptr) {
         AERROR << "Create response sub failed.";
+        std::lock_guard<std::recursive_mutex> lock(callback_state_->mutex);
+        callback_state_->owner = nullptr;
         request_transmitter_.reset();
         return false;
     }
@@ -266,9 +292,11 @@ bool Client<Request, Response>::Init() {
 
 template <typename Request, typename Response>
 void Client<Request, Response>::JoinTheTopology() {
-    change_conn_ = channel_manager_->AddChangeListener(std::bind(
-        &Client<Request, Response>::OnChannelChange, this,
-        std::placeholders::_1));
+    change_conn_ = channel_manager_->AddChangeListener(
+        [state = callback_state_](const proto::ChangeMsg& change) {
+            std::lock_guard<std::recursive_mutex> lock(state->mutex);
+            if (state->owner != nullptr) state->owner->OnChannelChange(change);
+        });
 
     std::vector<proto::RoleAttributes> readers;
     channel_manager_->GetReadersOfChannel(request_channel_, &readers);
@@ -384,11 +412,24 @@ Client<Request, Response>::AsyncSendRequest(SharedRequest request,
         SharedPromise call_promise = std::make_shared<Promise>();
         SharedFuture f(call_promise->get_future());
         pending_requests_[info.seq_num()] =
-            std::make_tuple(call_promise, std::forward<CallbackType>(cb), f);
+            std::make_tuple(call_promise, std::forward<CallbackType>(cb), f, request);
         return f;
     } else {
         return std::shared_future<std::shared_ptr<Response>>();
     }
+}
+
+template <typename Request, typename Response>
+bool Client<Request, Response>::RetransmitRequest(const SharedRequest& request) {
+    if (!request || !IsInit()) return false;
+    std::lock_guard<std::mutex> lock(pending_requests_mutex_);
+    for (const auto& pending : pending_requests_) {
+        if (std::get<3>(pending.second) == request) {
+            transport::MessageInfo info(writer_id_, pending.first, writer_id_);
+            return request_transmitter_->Transmit(std::get<3>(pending.second), info);
+        }
+    }
+    return false;
 }
 
 template <typename Request, typename Response>

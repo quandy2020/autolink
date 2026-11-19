@@ -14,8 +14,14 @@
  * limitations under the License.
  *****************************************************************************/
 
+/** @file hybrid_receiver.hpp
+ * @brief Hybrid live and history reception with owned asynchronous callback state.
+ */
+
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <set>
@@ -83,7 +89,16 @@ private:
     void InitTransmitters();
     void ClearTransmitters();
     void ReceiveHistoryMsg(const RoleAttributes& opposite_attr);
-    void ThreadFunc(const RoleAttributes& opposite_attr);
+    /**
+     * @brief Receive history using only owned endpoint/callback state.
+     * @param attr Dedicated history endpoint copied before asynchronous scheduling.
+     * @param mode Transport selected while the parent's mapping exists.
+     * @param state Parent forwarding generation; retirement cancels replay admission.
+     * @param listener Owned forwarding callback with the original endpoint identity.
+     */
+    static void ThreadFunc(const RoleAttributes& attr, OptionalMode mode,
+                          const typename Receiver<M>::CallbackStatePtr& state,
+                          const typename Receiver<M>::MessageListener& listener);
     Relation GetRelation(const RoleAttributes& opposite_attr);
 
     HistoryPtr history_;
@@ -113,6 +128,7 @@ HybridReceiver<M>::HybridReceiver(
 
 template <typename M>
 HybridReceiver<M>::~HybridReceiver() {
+    this->CloseCallbacks();
     ClearTransmitters();
     ClearReceivers();
 }
@@ -214,8 +230,7 @@ void HybridReceiver<M>::InitReceivers() {
     modes.insert(mode_->same_proc());
     modes.insert(mode_->diff_proc());
     modes.insert(mode_->diff_host());
-    auto listener = std::bind(&HybridReceiver<M>::OnNewMessage, this,
-                              std::placeholders::_1, std::placeholders::_2);
+    auto listener = this->SnapshotListener();
     for (auto& mode : modes) {
         switch (mode) {
             case OptionalMode::INTRA:
@@ -282,33 +297,35 @@ void HybridReceiver<M>::ReceiveHistoryMsg(const RoleAttributes& opposite_attr) {
         return;
     }
 
-    auto attr = opposite_attr;
-    autolink::Async(&HybridReceiver<M>::ThreadFunc, this, attr);
+    const std::string channel_name =
+        std::to_string(opposite_attr.id()) + std::to_string(this->attr_.id());
+    RoleAttributes attr(this->attr_);
+    attr.set_channel_name(channel_name);
+    attr.set_channel_id(common::GlobalData::RegisterChannel(channel_name));
+    attr.mutable_qos_profile()->CopyFrom(opposite_attr.qos_profile());
+    const auto relation = GetRelation(opposite_attr);
+    const auto mode = relation == NO_RELATION ? OptionalMode::SHM : mapping_table_[relation];
+    autolink::Async(&HybridReceiver<M>::ThreadFunc, attr, mode,
+                    this->callback_state_, this->SnapshotListener());
 }
 
 template <typename M>
-void HybridReceiver<M>::ThreadFunc(const RoleAttributes& opposite_attr) {
-    std::string channel_name =
-        std::to_string(opposite_attr.id()) + std::to_string(this->attr_.id());
-    uint64_t channel_id = common::GlobalData::RegisterChannel(channel_name);
-
-    RoleAttributes attr(this->attr_);
-    attr.set_channel_name(channel_name);
-    attr.set_channel_id(channel_id);
-    attr.mutable_qos_profile()->CopyFrom(opposite_attr.qos_profile());
-
-    volatile bool is_msg_arrived = false;
-    auto listener = [&](const std::shared_ptr<M>& msg,
-                        const MessageInfo& msg_info,
-                        const RoleAttributes& /*attr*/) {
-        is_msg_arrived = true;
-        this->OnNewMessage(msg, msg_info);
+void HybridReceiver<M>::ThreadFunc(
+    const RoleAttributes& attr, OptionalMode mode,
+    const typename Receiver<M>::CallbackStatePtr& state,
+    const typename Receiver<M>::MessageListener& forward) {
+    if (state->retired.load()) return;
+    // The dispatcher may already have copied this callback when Disable is
+    // called. Neither the arrival flag nor forwarding state lives on our stack.
+    auto arrived = std::make_shared<std::atomic<bool>>(false);
+    auto listener = [arrived, forward](const std::shared_ptr<M>& msg,
+                                      const MessageInfo& info,
+                                      const RoleAttributes& received_attr) {
+        arrived->store(true);
+        forward(msg, info, received_attr);
     };
 
     ReceiverPtr receiver;
-    const auto relation = GetRelation(opposite_attr);
-    const auto mode = (relation == NO_RELATION) ? OptionalMode::SHM
-                                                : mapping_table_[relation];
 #if AUTOLINK_ENABLE_FASTDDS
     if (mode == OptionalMode::RTPS) {
         receiver = std::make_shared<RtpsReceiver<M>>(attr, listener);
@@ -321,12 +338,14 @@ void HybridReceiver<M>::ThreadFunc(const RoleAttributes& opposite_attr) {
 #endif
     receiver->Enable();
 
-    do {
-        if (is_msg_arrived) {
-            is_msg_arrived = false;
-        }
-        autolink::USleep(1000000);
-    } while (is_msg_arrived);
+    auto quiet_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (!state->retired.load()) {
+        const auto now = std::chrono::steady_clock::now();
+        if (arrived->exchange(false)) quiet_deadline = now + std::chrono::seconds(1);
+        if (now >= quiet_deadline) break;
+        // Yield coroutine workers and notice parent retirement promptly.
+        autolink::USleep(10000);
+    }
 
     receiver->Disable();
     ADEBUG << "recv threadfunc exit.";
